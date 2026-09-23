@@ -1,0 +1,48 @@
+# Environment — NEVER commit real secrets
+.env
+.env.local
+.env.*.local
+
+# Python
+__pycache__/
+*.py[cod]
+*.so
+.Python
+venv/
+env/
+.venv/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Data & uploads — these live in Docker volumes, not the repo
+data/
+uploads/
+*.log
+
+# Eval results (regenerable)
+eval/results/
+
+# Loose uploads at repo root (moved elsewhere during dev)
+/*.pdf
+/*.docx
+/*.txt
+query.json
+
+# Backups
+*.bak
+*.bak2
+*.bak3
+*-backup-*
+_scratch/

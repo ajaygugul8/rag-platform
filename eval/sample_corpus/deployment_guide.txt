@@ -1,0 +1,19 @@
+Deployment Guide
+
+This document describes the deployment process for the platform service.
+
+Step 1: Build the container image using the provided Dockerfile and tag
+it with the current release version.
+
+Step 2: Push the image to the internal container registry.
+
+Step 3: Enable the rollout by setting feature flag FF-2024 to "true" in
+the environment configuration. This flag controls the new deployment
+pipeline; leaving it disabled falls back to the legacy deploy script.
+
+Step 4: Apply the Kubernetes manifests using the deploy script, then
+verify the health check endpoint returns a 200 status before routing
+production traffic to the new version.
+
+Rollback: if the health check fails, set FF-2024 back to "false" and
+re-apply the previous manifest version.

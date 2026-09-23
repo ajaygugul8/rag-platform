@@ -1,0 +1,14 @@
+Security FAQ
+
+Q: Is multi-factor authentication required?
+A: Yes. All employees must enable multi-factor authentication (MFA) on
+their corporate account within their first week, per control SEC-104.
+Accounts without MFA enabled after seven days are automatically locked.
+
+Q: How often are access reviews performed?
+A: Access reviews for production systems are performed quarterly by the
+security team, covering both employee and service-account permissions.
+
+Q: Who do I contact for a security incident?
+A: Report suspected security incidents immediately to security@internal
+and do not wait for the next scheduled review.

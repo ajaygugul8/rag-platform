@@ -1,0 +1,58 @@
+[
+  {
+    "id": "q1_direct_fact",
+    "question": "How many days of paid annual leave do full-time employees get?",
+    "expected_source_file": "leave_policy.txt",
+    "expected_keywords": ["20", "twenty"],
+    "expect_abstain": false,
+    "scenario": "Direct factual question with a clear supporting paragraph."
+  },
+  {
+    "id": "q2_multi_doc",
+    "question": "What are the first two steps of the deployment process?",
+    "expected_source_file": "deployment_guide.txt",
+    "expected_keywords": ["build", "push", "registry", "container"],
+    "expect_abstain": false,
+    "scenario": "Question requiring combining sequential information from one document."
+  },
+  {
+    "id": "q3_terminology_rewrite",
+    "question": "Do contractors get PTO?",
+    "expected_source_file": "leave_policy.txt",
+    "expected_keywords": ["contractor", "not eligible"],
+    "expect_abstain": false,
+    "scenario": "Question with terminology (PTO) that benefits from query rewriting to match 'paid annual leave'."
+  },
+  {
+    "id": "q4_exact_code_keyword",
+    "question": "What is control SEC-104 about?",
+    "expected_source_file": "security_faq.txt",
+    "expected_keywords": ["multi-factor", "mfa"],
+    "expect_abstain": false,
+    "scenario": "Exact code/acronym match — hybrid/keyword retrieval should outperform pure vector search here."
+  },
+  {
+    "id": "q5_feature_flag_code",
+    "question": "What does the FF-2024 feature flag control?",
+    "expected_source_file": "deployment_guide.txt",
+    "expected_keywords": ["rollout", "deployment pipeline"],
+    "expect_abstain": false,
+    "scenario": "Another exact-code lookup where keyword retrieval matters more than semantic similarity."
+  },
+  {
+    "id": "q6_no_evidence",
+    "question": "What is the company's policy on quantum computing research grants?",
+    "expected_source_file": null,
+    "expected_keywords": [],
+    "expect_abstain": true,
+    "scenario": "No supporting evidence in the knowledge base — the assistant must abstain rather than invent an answer."
+  },
+  {
+    "id": "q7_access_review_cadence",
+    "question": "How often are production access reviews performed?",
+    "expected_source_file": "security_faq.txt",
+    "expected_keywords": ["quarterly"],
+    "expect_abstain": false,
+    "scenario": "Direct factual question, second document, to check retrieval isn't overfitting to one source."
+  }
+]
