@@ -36,24 +36,24 @@ API_BASE = os.environ.get("RAG_API_BASE", "http://localhost:8000")
 DEFAULT_TOKEN = os.environ.get("RAG_API_TOKEN", "change-me-dev-token")
 
 # ---------- design tokens ---------------------------------------------------
-BG          = "#0e0c09"
-BG_RAISED   = "#17140f"
-BG_HOVER    = "#1e1a14"
-BORDER      = "#26211a"
-BORDER_HI   = "#3a3225"
-INK         = "#f0e9dc"
-INK_MUTED   = "#9a9081"
-INK_FAINT   = "#6a6357"
-ACCENT      = "#e0a94a"
-ACCENT_HI   = "#f2bb5e"
-ACCENT_INK  = "#1a1610"
-GOOD        = "#86a86a"
-GOOD_BG     = "#182117"
-GOOD_BORDER = "#2c3a26"
-BAD         = "#d06a4f"
-BAD_BG      = "#251411"
-BAD_BORDER  = "#3c221a"
-WAIT        = "#7ba0b8"
+BG          = "#ffffff"
+BG_RAISED   = "#f9f9f7"
+BG_HOVER    = "#f1f4f0"
+BORDER      = "#eceae4"
+BORDER_HI   = "#dfe3dc"
+INK         = "#17181a"
+INK_MUTED   = "#2f3740"
+INK_FAINT   = "#5d6670"
+ACCENT      = "#b7782d"
+ACCENT_HI   = "#a26620"
+ACCENT_INK  = "#ffffff"
+GOOD        = "#2d6d4b"
+GOOD_BG     = "#f0f9f4"
+GOOD_BORDER = "#d9ebdf"
+BAD         = "#b0483d"
+BAD_BG      = "#fff4f2"
+BAD_BORDER  = "#f1d7d3"
+WAIT        = "#4a6ea8"
 
 
 # ============================================================================
@@ -62,18 +62,29 @@ WAIT        = "#7ba0b8"
 
 CSS = f"""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Fraunces:opsz,wght@9..144,500;9..144,600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Neuton:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap');
 
-.stApp {{ background: {BG}; color: {INK}; font-family: 'Inter', -apple-system, sans-serif; }}
+.stApp {{ background: {BG}; color: {INK}; font-family: 'Neuton', 'Inter', -apple-system, sans-serif; }}
+.stApp p, .stApp li, .stApp label, .stApp span, .stApp div, .stApp h1, .stApp h2, .stApp h3, .stApp h4, .stApp h5, .stApp h6 {{ color: inherit; }}
 [data-testid="stHeader"] {{ background: transparent; height: 0; }}
 section.main > div {{ padding-top: 0 !important; }}
 .block-container {{ padding: 1.25rem 2.5rem 7rem 2.5rem !important; max-width: 100% !important; }}
+
+[data-testid="stSidebar"] *,
+[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p,
+[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] div,
+[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] span {{ color: {INK} !important; }}
 
 /* ---------- SIDEBAR ---------- */
 [data-testid="stSidebar"] {{
     background: {BG_RAISED};
     border-right: 1px solid {BORDER};
     width: 300px !important;
+}}
+
+[data-testid="stSidebar"] .stButton > button,
+button[title^="conversation:"] {{
+    box-shadow: none !important;
 }}
 [data-testid="stSidebar"] > div:first-child {{ padding: 1.5rem 1.1rem !important; }}
 [data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p {{ margin: 0 !important; }}
@@ -113,9 +124,35 @@ section.main > div {{ padding-top: 0 !important; }}
 }}
 
 .side-label {{
-    font-size: 10.5px; color: {INK_FAINT}; font-weight: 600;
-    text-transform: uppercase; letter-spacing: 0.8px;
-    margin: 1.4rem 0 0.5rem 0.3rem;
+    font-size: 10.5px; color: {INK_FAINT}; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 1.1px;
+    margin: 1.4rem 0 0.7rem 0.3rem;
+}}
+
+[data-testid="stSidebar"] .stRadio {{
+    margin-top: 0.25rem;
+}}
+[data-testid="stSidebar"] .stRadio > div {{
+    gap: 0.35rem !important;
+}}
+[data-testid="stSidebar"] .stRadio label {{
+    color: {INK_MUTED} !important;
+    font-size: 14px !important;
+    font-weight: 500 !important;
+    border-radius: 8px !important;
+    padding: 0.38rem 0.55rem 0.38rem 0.45rem !important;
+    transition: all 0.12s ease !important;
+}}
+[data-testid="stSidebar"] .stRadio label:hover {{
+    background: {BG_HOVER} !important;
+    color: {INK} !important;
+}}
+[data-testid="stSidebar"] .stRadio input[type="radio"] {{
+    accent-color: {ACCENT} !important;
+}}
+[data-testid="stSidebar"] .stRadio [data-testid="stMarkdownContainer"] p {{
+    color: inherit !important;
+    margin: 0 !important;
 }}
 
 /* Conversation list items */
@@ -458,8 +495,8 @@ button[kind="primary"]:hover {{
     border: 1px solid {BORDER_HI} !important;
     border-radius: 26px !important;
     padding: 8px 8px 8px 24px !important;
-    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35),
-                0 1px 0 rgba(255, 255, 255, 0.03) inset !important;
+    box-shadow: 0 4px 16px rgba(20, 26, 31, 0.05),
+                0 1px 0 rgba(255, 255, 255, 0.4) inset !important;
     width: 100% !important;
     max-width: 100% !important;
     margin: 0 !important;
@@ -469,8 +506,8 @@ button[kind="primary"]:hover {{
 
 [data-testid="stChatInput"]:focus-within {{
     border-color: {BORDER_HI} !important;
-    box-shadow: 0 10px 32px rgba(0, 0, 0, 0.45),
-                0 1px 0 rgba(255, 255, 255, 0.04) inset !important;
+    box-shadow: 0 8px 22px rgba(20, 26, 31, 0.08),
+                0 1px 0 rgba(255, 255, 255, 0.5) inset !important;
 }}
 
 [data-testid="stChatInput"] textarea {{
@@ -566,11 +603,30 @@ button[kind="primary"]:hover {{
     border-radius: 12px !important;
     padding: 1rem !important;
     transition: border-color 0.15s ease !important;
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,0.35) !important;
 }}
 [data-testid="stFileUploader"]:hover {{ border-color: {ACCENT}66 !important; }}
 [data-testid="stFileUploader"] section {{ background: transparent !important; border: none !important; }}
 [data-testid="stFileUploader"] [data-testid="stMarkdownContainer"] p {{
-    color: {INK_MUTED} !important; font-size: 14px !important;
+    color: {INK} !important; font-size: 14px !important;
+}}
+[data-testid="stFileUploader"] button,
+[data-testid="stFileUploader"] [data-testid="stBaseButton-secondary"],
+[data-testid="stFileUploader"] [data-testid="baseButton-secondary"] {{
+    background: #1b1f23 !important;
+    color: #ffffff !important;
+    border: 1px solid #2f363d !important;
+    border-radius: 10px !important;
+    font-weight: 600 !important;
+    font-size: 14px !important;
+    padding: 0.7rem 1.1rem !important;
+    box-shadow: none !important;
+}}
+[data-testid="stFileUploader"] button:hover,
+[data-testid="stFileUploader"] [data-testid="stBaseButton-secondary"]:hover,
+[data-testid="stFileUploader"] [data-testid="baseButton-secondary"]:hover {{
+    background: #2a2f34 !important;
+    color: #ffffff !important;
 }}
 
 /* ---------- FORMS / INPUTS ---------- */
@@ -581,6 +637,31 @@ button[kind="primary"]:hover {{
 [data-testid="stTextInput"] input:focus, [data-testid="stTextArea"] textarea:focus {{
     border-color: {ACCENT} !important;
     box-shadow: 0 0 0 3px {ACCENT}22 !important;
+}}
+[data-testid="stTextInput"] button,
+[data-testid="stTextInput"] [data-testid="stBaseButton-secondary"],
+[data-testid="stTextInput"] [data-testid="baseButton-secondary"],
+[data-testid="stTextInput"] button[title*="Show password"],
+[data-testid="stTextInput"] button[title*="Hide password"],
+[data-testid="stTextInput"] button[aria-label*="Show password"],
+[data-testid="stTextInput"] button[aria-label*="Hide password"] {{
+    background: {BG_RAISED} !important;
+    color: {INK} !important;
+    border: 1px solid {BORDER_HI} !important;
+    border-radius: 8px !important;
+    font-size: 12px !important;
+    font-weight: 600 !important;
+    padding: 0.45rem 0.7rem !important;
+    min-height: 0 !important;
+    height: auto !important;
+    box-shadow: none !important;
+}}
+[data-testid="stTextInput"] button:hover,
+[data-testid="stTextInput"] [data-testid="stBaseButton-secondary"]:hover,
+[data-testid="stTextInput"] [data-testid="baseButton-secondary"]:hover {{
+    background: {BG_HOVER} !important;
+    color: {INK} !important;
+    border-color: {BORDER_HI} !important;
 }}
 [data-testid="stRadio"] label {{ color: {INK} !important; font-size: 14px !important; }}
 [data-testid="stRadio"] [data-testid="stMarkdownContainer"] p {{
