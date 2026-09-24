@@ -37,8 +37,14 @@ def run_ingestion(db: Session, document: Document, strategy: ChunkingStrategy = 
     try:
         with trace_stage("ingestion_parse", document_id=doc_id):
             content = Path(document.storage_path).read_bytes()
-            raw_units = parse_document(document.content_type, content, doc_id)
-            cleaned_units = [ParsedUnit(clean_text(u.text), u.page_number, u.section_title) for u in raw_units]
+            parsed = parse_document(document.content_type, content, doc_id)
+            # Phase 2: only text_units are routed to chunks. table_units
+            # and picture_units are captured by the parser but not yet
+            # persisted — that's Phase 3 (tables) and Phase 4 (pictures).
+            cleaned_units = [
+                ParsedUnit(clean_text(u.text), u.page_number, u.section_title)
+                for u in parsed.text_units
+            ]
 
         with trace_stage("ingestion_chunk", document_id=doc_id):
             raw_chunks = chunk_document(cleaned_units, strategy, DEFAULT_CHUNK_SIZE, DEFAULT_CHUNK_OVERLAP)

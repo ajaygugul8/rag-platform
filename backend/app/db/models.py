@@ -90,7 +90,12 @@ class Chunk(Base):
 
     token_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     chunk_metadata: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
-
+    modality: Mapped[str] = mapped_column(String(16), nullable=False, default="text", server_default="text")
+    parent_chunk_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), 
+        ForeignKey("chunks.id", ondelete="SET NULL"), 
+        nullable=True
+    )
     embedding: Mapped[list[float] | None] = mapped_column(Vector(settings.embedding_dim), nullable=True)
 
     # Generated column for BM25-style keyword search (Phase 3: Hybrid
@@ -108,6 +113,16 @@ class Chunk(Base):
     __table_args__ = (
         Index("ix_chunks_document_id", "document_id"),
         Index("ix_chunks_content_tsv", "content_tsv", postgresql_using="gin"),
+        # HNSW index for vector similarity search is created at app startup in main.py rather than here, since pgvector's index DDL isn't
+        # expressible through SQLAlchemy's Index() the way a plain GIN index is. See main.py for details.
+        # Index("ix_chunks_embedding_hnsw", "embedding", postgresql_using="hnsw", postgresql_ops={"embedding": "vector_cosine_ops"}),
+        Index("ix_chunks_modality", "modality"),
+        # Vector ANN index (HNSW) is created at app startup in main.py rather than here, since pgvector's index DDL isn't expressible through
+        # SQLAlchemy's Index() the way a plain GIN index is. See main.py for details.
+        # Index("ix_chunks_embedding_hnsw", "embedding", postgresql_using="hnsw", postgresql_ops={"embedding": "vector_cosine_ops"}),
+        # Index("ix_chunks_parent_chunk_id", "parent_chunk_id"),
+        # Index("ix_chunks_modality", "modality"),
+        # Index("ix_chunks_parent_chunk_id", "parent_chunk_id"), 
         # Vector ANN index (HNSW) is created at app startup in main.py rather
         # than here, since pgvector's index DDL isn't expressible through
         # SQLAlchemy's Index() the way a plain GIN index is.
