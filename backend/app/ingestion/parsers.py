@@ -101,6 +101,52 @@ def _page_of(element) -> int | None:
     page = getattr(first, "page_no", None)
     return int(page) if page is not None else None
 
+def _merge_text_units(units: list[ParsedUnit]) -> list[ParsedUnit]:
+    """Docling emits one element per paragraph, heading, or list item.
+    Fed directly to the chunker, each becomes a tiny chunk (~15 tokens)
+    with a weak embedding. Merge consecutive units that share the same
+    section_title into a single ParsedUnit; the recursive chunker then
+    splits by paragraph within that unit as normal.
+
+    Section boundaries are respected: a new section_title flushes the
+    buffer and starts a fresh unit. This keeps the heading as the first
+    line of its section's content rather than mixing it with unrelated
+    preceding text.
+    """
+    if not units:
+        return []
+
+    merged: list[ParsedUnit] = []
+    buffer_text: list[str] = []
+    current_section: str | None = None
+    current_page: int | None = None
+
+    def flush():
+        nonlocal buffer_text, current_page
+        if buffer_text:
+            merged.append(ParsedUnit(
+                text="\n\n".join(buffer_text),
+                page_number=current_page,
+                section_title=current_section,
+            ))
+            buffer_text = []
+            current_page = None
+
+    for unit in units:
+        # Section change → flush and start new
+        if unit.section_title != current_section:
+            flush()
+            current_section = unit.section_title
+
+        # First unit of a new section: use its page number as the section's
+        if current_page is None:
+            current_page = unit.page_number
+
+        buffer_text.append(unit.text)
+
+    flush()
+    return merged
+
 def _safe_caption(element) -> str | None:
     """Docling exposes `caption_text` as a method, not a property. Call it,
     coerce to string, and swallow failures — captions are a nice-to-have,
@@ -217,7 +263,9 @@ def _walk_docling(doc, document_id: str) -> ParsedDocument:
         # Other element types (CodeItem, FootnoteItem, FormulaItem)
         # ignored for now.
 
+    out.text_units = _merge_text_units(out.text_units)
     return out
+
 
 
 # ------------------------------------------------------------------ public
