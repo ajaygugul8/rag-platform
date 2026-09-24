@@ -22,7 +22,7 @@ matters.
 
 import logging
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 
 from app.ingestion.parsers import ParsedUnit, TableUnit
@@ -44,6 +44,7 @@ class RawChunk:
     section_title: str | None
     token_count: int
     modality: str = "text"  # "text" | "table" | "image"
+    metadata: dict = field(default_factory=dict)
 
 
 class ChunkingStrategy(str, Enum):

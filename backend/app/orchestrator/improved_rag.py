@@ -8,6 +8,7 @@ spec's acceptance criteria explicitly require "a comparison of baseline
 RAG versus the improved pipeline using evaluation metrics" (Phase 5), and
 you can't compare two things that share one implementation.
 """
+import re
 
 from dataclasses import dataclass
 from uuid import UUID
@@ -45,6 +46,14 @@ from app.retrieval.vector_store import RetrievedChunk, vector_search
 #   2. A raw keyword signal is added as an OR condition: if the ORIGINAL
 #      question gets any nonzero PostgreSQL ts_rank score, that's treated
 #      as sufficient evidence on its own.
+
+_IMAGE_QUERY_RE = re.compile(
+    r"\b(image|images|picture|pictures|chart|charts|figure|figures|"
+    r"diagram|diagrams|graph|graphs|photo|photos|illustration|"
+    r"illustrations|screenshot|screenshots)\b",
+    re.IGNORECASE,
+)
+
 RAW_VECTOR_MIN_RELEVANCE_SCORE = 0.6
 
 ABSTENTION_MESSAGE = "I don't have enough information in the knowledge base to answer that."
@@ -182,6 +191,28 @@ def answer_query(
             )
     else:
         final_chunks = candidates
+
+    # Modality guarantee: rerank replaces scores entirely, so the
+    # hybrid_search modality boost is lost by this point. If the query
+    # explicitly asks about an image and rerank dropped every image
+    # chunk, splice the best-scoring image candidate back into the
+    # final set. Cross-encoders consistently under-rank image
+    # descriptions against prose *about* images — this closes that gap
+    # without loosening the pipeline for text queries.
+    if _IMAGE_QUERY_RE.search(resolved_query or ""):
+        _IMAGE_PREFIXES = ("Alternate text for this image", "This image depicts")
+        already = any((c.content or "").startswith(_IMAGE_PREFIXES) for c in final_chunks)
+        if not already:
+            image_candidates = [
+                c for c in candidates
+                if (c.content or "").startswith(_IMAGE_PREFIXES)
+            ]
+            if image_candidates:
+                best_image = max(image_candidates, key=lambda c: c.score)
+                if final_chunks:
+                    final_chunks = list(final_chunks[:-1]) + [best_image]
+                else:
+                    final_chunks = [best_image]
 
     with trace_stage("compress", budget=settings.context_token_budget):
         relevant_chunks = compress_context(

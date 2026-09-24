@@ -17,6 +17,11 @@ sources provided below. Follow these rules strictly:
 respond exactly with: "I don't have enough information in the knowledge base to \
 answer that." Do not guess or use outside knowledge.
 4. Be concise and direct. Do not repeat the question.
+5. Some sources are images. When a source contains both "Alternate text for this \
+image:" and "This image depicts:", the alternate text is authoritative — it comes \
+from the document's author. The "This image depicts:" description is machine-
+generated and may be imprecise. Use the description only to supplement the \
+alternate text, never to contradict it. If the two disagree, prefer the alternate text.
 """
 
 

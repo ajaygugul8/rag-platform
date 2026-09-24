@@ -49,6 +49,10 @@ class Settings(BaseSettings):
     ollama_base_url: str = "http://host.docker.internal:11434/v1"
     ollama_model: str = "qwen3:8b"
     openai_api_key: str | None = None  # used only by embeddings/openai_provider.py
+    # --- Vision (Phase 4: image description at ingestion) ---
+    vision_enabled: bool = True
+    ollama_vision_model: str = "moondream:1.8b"
+    vision_max_tokens: int = 60
 
     # --- Retrieval ---
     retrieval_top_k: int = 8

@@ -299,6 +299,38 @@ def parse_text(content: bytes, document_id: str) -> ParsedDocument:
     return ParsedDocument(text_units=[ParsedUnit(text=text)])
 
 
+
+# Namespace for the WordprocessingDrawing docPr element (alt-text container)
+_WP_DOCPR_NS = (
+    "{http://schemas.openxmlformats.org/drawingml/2006/"
+    "wordprocessingDrawing}docPr"
+)
+
+
+def extract_docx_alt_texts(content: bytes) -> list[str]:
+    """python-docx supplementary extractor for image alt text.
+
+    Docling does not populate PictureItem.caption_text for DOCX. This
+    walks the document XML directly for wp:docPr elements, which is the
+    DrawingML container for image descriptions — works for both inline
+    and floating images (inline_shapes only sees inline ones).
+
+    Returns alt texts in document order; '' for images without alt text.
+    """
+    try:
+        from docx import Document as DocxDocument
+        from io import BytesIO as _BytesIO
+
+        d = DocxDocument(_BytesIO(content))
+        alts: list[str] = []
+        for docPr in d.element.body.iter(_WP_DOCPR_NS):
+            descr = (docPr.get("descr") or "").strip()
+            alts.append(descr)
+        return alts
+    except Exception as exc:
+        logger.warning("docx_alt_text_extract_failed", extra={"error": str(exc)})
+        return []
+
 PARSERS = {
     "application/pdf": parse_pdf,
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document": parse_docx,
