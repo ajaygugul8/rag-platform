@@ -355,3 +355,12 @@ $body = @{ question = "What tables does this document contains(Sample Table-Rich
 Invoke-RestMethod -Uri "http://localhost:8000/query" -Method Post `
     -Headers @{ Authorization = "Bearer change-me-dev-token" } `
     -ContentType "application/json" -Body $body | Format-List
+
+
+
+docker compose exec postgres psql -U postgres -d modern_rag -P pager=off -c "
+SELECT c.modality, COUNT(*) AS chunks, AVG(c.token_count)::int AS avg_tokens
+FROM chunks c JOIN documents d ON d.id = c.document_id
+WHERE d.filename ILIKE '%action%' OR d.filename ILIKE '%presentation%'
+GROUP BY c.modality ORDER BY c.modality;
+"

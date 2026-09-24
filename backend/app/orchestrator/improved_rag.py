@@ -173,7 +173,19 @@ def answer_query(
             orig_relevance = orig_top[0].score if orig_top else 0.0
             raw_relevance = max(raw_relevance, orig_relevance)
 
-    if not candidates or raw_relevance < RAW_VECTOR_MIN_RELEVANCE_SCORE:
+    # Modality-aware gate: image descriptions embed to a slightly
+    # different region of vector space than text (the "modality gap"),
+    # so a query phrased in text can score below the 0.6 threshold
+    # against an image chunk it should match. When the query mentions
+    # an image AND an image candidate exists, relax the gate.
+    _IMAGE_PREFIXES_GATE = ("Alternate text for this image", "This image depicts")
+    has_image_candidate = any(
+        (c.content or "").startswith(_IMAGE_PREFIXES_GATE) for c in candidates
+    )
+    relax_gate = bool(_IMAGE_QUERY_RE.search(resolved_query or "")) and has_image_candidate
+    effective_threshold = 0.35 if relax_gate else RAW_VECTOR_MIN_RELEVANCE_SCORE
+
+    if not candidates or raw_relevance < effective_threshold:
         if session_id:
             add_turn(db, session_id, "user", question)
             add_turn(db, session_id, "assistant", ABSTENTION_MESSAGE)

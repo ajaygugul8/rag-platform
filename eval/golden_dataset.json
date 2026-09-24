@@ -1,58 +1,162 @@
 [
   {
-    "id": "q1_direct_fact",
-    "question": "How many days of paid annual leave do full-time employees get?",
+    "id": "q1_leave_days",
+    "question": "How many days of paid annual leave do full-time employees receive?",
     "expected_source_file": "leave_policy.txt",
-    "expected_keywords": ["20", "twenty"],
+    "expected_keywords": ["20", "twenty", "paid annual leave"],
     "expect_abstain": false,
-    "scenario": "Direct factual question with a clear supporting paragraph."
+    "scenario": "Direct factual question with an exact numeric answer."
   },
   {
-    "id": "q2_multi_doc",
-    "question": "What are the first two steps of the deployment process?",
+    "id": "q2_contractor_pto",
+    "question": "Do contractors get paid time off under this policy?",
+    "expected_source_file": "leave_policy.txt",
+    "expected_keywords": ["contractors", "not eligible", "service agreement"],
+    "expect_abstain": false,
+    "scenario": "Terminology mismatch: 'PTO' and 'paid time off' should map to the leave policy language."
+  },
+  {
+    "id": "q3_leave_carryover",
+    "question": "Can unused leave carry over to the next year and if so by how much?",
+    "expected_source_file": "leave_policy.txt",
+    "expected_keywords": ["carry over", "five", "December 31st"],
+    "expect_abstain": false,
+    "scenario": "Multi-part factual answer requiring precise threshold and deadline details."
+  },
+  {
+    "id": "q4_sick_leave_separate",
+    "question": "Is sick leave counted against the annual leave balance?",
+    "expected_source_file": "leave_policy.txt",
+    "expected_keywords": ["separately", "sick leave", "annual leave balance"],
+    "expect_abstain": false,
+    "scenario": "Negative-answer question that should resolve to a clear policy exclusion."
+  },
+  {
+    "id": "q5_hr_portal_deadline",
+    "question": "How much advance notice is required for a leave request?",
+    "expected_source_file": "leave_policy.txt",
+    "expected_keywords": ["five business days", "HR portal"],
+    "expect_abstain": false,
+    "scenario": "Procedural policy question with a standard operational deadline."
+  },
+  {
+    "id": "q6_deployment_first_step",
+    "question": "What is the first step in the deployment process?",
     "expected_source_file": "deployment_guide.txt",
-    "expected_keywords": ["build", "push", "registry", "container"],
+    "expected_keywords": ["build", "container image", "Dockerfile"],
     "expect_abstain": false,
-    "scenario": "Question requiring combining sequential information from one document."
+    "scenario": "Sequential process question that should match the guide's explicit steps."
   },
   {
-    "id": "q3_terminology_rewrite",
-    "question": "Do contractors get PTO?",
-    "expected_source_file": "leave_policy.txt",
-    "expected_keywords": ["contractor", "not eligible"],
+    "id": "q7_deployment_second_step",
+    "question": "After building the image, what happens next?",
+    "expected_source_file": "deployment_guide.txt",
+    "expected_keywords": ["push", "registry", "internal container registry"],
     "expect_abstain": false,
-    "scenario": "Question with terminology (PTO) that benefits from query rewriting to match 'paid annual leave'."
+    "scenario": "Step-order retrieval question with a clear next-action dependency."
   },
   {
-    "id": "q4_exact_code_keyword",
-    "question": "What is control SEC-104 about?",
-    "expected_source_file": "security_faq.txt",
-    "expected_keywords": ["multi-factor", "mfa"],
-    "expect_abstain": false,
-    "scenario": "Exact code/acronym match — hybrid/keyword retrieval should outperform pure vector search here."
-  },
-  {
-    "id": "q5_feature_flag_code",
+    "id": "q8_feature_flag_what_controls",
     "question": "What does the FF-2024 feature flag control?",
     "expected_source_file": "deployment_guide.txt",
-    "expected_keywords": ["rollout", "deployment pipeline"],
+    "expected_keywords": ["new deployment pipeline", "rollout"],
     "expect_abstain": false,
-    "scenario": "Another exact-code lookup where keyword retrieval matters more than semantic similarity."
+    "scenario": "Exact code lookup where keyword retrieval should be robust."
   },
   {
-    "id": "q6_no_evidence",
+    "id": "q9_rollback_condition",
+    "question": "When should the team roll back the deployment?",
+    "expected_source_file": "deployment_guide.txt",
+    "expected_keywords": ["health check fails", "FF-2024", "false"],
+    "expect_abstain": false,
+    "scenario": "Condition-based operational guidance from the deployment runbook."
+  },
+  {
+    "id": "q10_verify_health_check",
+    "question": "What status must the health check endpoint return before production traffic is routed?",
+    "expected_source_file": "deployment_guide.txt",
+    "expected_keywords": ["200", "health check", "production traffic"],
+    "expect_abstain": false,
+    "scenario": "Operational verification question with a precise numeric expectation."
+  },
+  {
+    "id": "q11_mfa_required",
+    "question": "Is multi-factor authentication required for employees?",
+    "expected_source_file": "security_faq.txt",
+    "expected_keywords": ["Yes", "multi-factor authentication", "MFA"],
+    "expect_abstain": false,
+    "scenario": "Direct answer with acronym and full-name wording in the same document."
+  },
+  {
+    "id": "q12_sec104_meaning",
+    "question": "What does control SEC-104 require?",
+    "expected_source_file": "security_faq.txt",
+    "expected_keywords": ["multi-factor authentication", "first week", "locked"],
+    "expect_abstain": false,
+    "scenario": "Exact control-code lookup tied to policy enforcement details."
+  },
+  {
+    "id": "q13_access_review_frequency",
+    "question": "How often are production access reviews performed?",
+    "expected_source_file": "security_faq.txt",
+    "expected_keywords": ["quarterly", "production systems"],
+    "expect_abstain": false,
+    "scenario": "Second source document used to avoid source overfitting."
+  },
+  {
+    "id": "q14_security_incident_contact",
+    "question": "Who should be contacted for a suspected security incident?",
+    "expected_source_file": "security_faq.txt",
+    "expected_keywords": ["security@internal", "report suspected security incidents"],
+    "expect_abstain": false,
+    "scenario": "Concrete contact-detail retrieval with one exact outbound address."
+  },
+  {
+    "id": "q15_standard_hours",
+    "question": "What are the standard working hours in the employee handbook?",
+    "expected_source_file": "notes.txt",
+    "expected_keywords": ["9:00 AM", "6:00 PM", "Monday through Friday"],
+    "expect_abstain": false,
+    "scenario": "Structured factual question from the employee notes corpus."
+  },
+  {
+    "id": "q16_remote_work_days",
+    "question": "How many days per week can employees work from home?",
+    "expected_source_file": "notes.txt",
+    "expected_keywords": ["two days per week", "work from home"],
+    "expect_abstain": false,
+    "scenario": "Quantitative answer from the notes document."
+  },
+  {
+    "id": "q17_equipment_return",
+    "question": "What happens to company equipment when an employee leaves the company?",
+    "expected_source_file": "notes.txt",
+    "expected_keywords": ["returned upon termination", "company property"],
+    "expect_abstain": false,
+    "scenario": "Policy-and-property retrieval question with a clear required action."
+  },
+  {
+    "id": "q18_expense_deadline",
+    "question": "Within what timeframe must business expenses be submitted with receipts?",
+    "expected_source_file": "notes.txt",
+    "expected_keywords": ["30 days", "receipts"],
+    "expect_abstain": false,
+    "scenario": "Operational policy question requiring a time-window answer."
+  },
+  {
+    "id": "q19_no_quantum_policy",
     "question": "What is the company's policy on quantum computing research grants?",
     "expected_source_file": null,
     "expected_keywords": [],
     "expect_abstain": true,
-    "scenario": "No supporting evidence in the knowledge base — the assistant must abstain rather than invent an answer."
+    "scenario": "No supporting evidence exists in the dataset; the system should abstain."
   },
   {
-    "id": "q7_access_review_cadence",
-    "question": "How often are production access reviews performed?",
-    "expected_source_file": "security_faq.txt",
-    "expected_keywords": ["quarterly"],
-    "expect_abstain": false,
-    "scenario": "Direct factual question, second document, to check retrieval isn't overfitting to one source."
+    "id": "q20_no_stock_option_policy",
+    "question": "Does the company offer stock options to employees?",
+    "expected_source_file": null,
+    "expected_keywords": [],
+    "expect_abstain": true,
+    "scenario": "Another abstention case that checks the model does not hallucinate unsupported benefits."
   }
 ]

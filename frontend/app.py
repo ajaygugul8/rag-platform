@@ -1,37 +1,33 @@
 """
-Streamlit frontend for the Modern RAG Platform.
+Modern RAG Platform — Streamlit frontend.
 
-Design: warm graphite theme with an amber "highlighter" accent (ties into
-the product's core idea - marking up a passage in a source document).
-Sidebar conversation history, avatar-led assistant messages rendered as
-full-width annotated excerpts (not chat bubbles - the answer IS the
-product), citations styled as margin notes with a left accent bar, a
-4-icon bottom toolbar for navigation, and a back button in each page
-header.
+Design principles:
+  1. The answer is the product. Reading experience comes first.
+  2. Progress is visible. RAG takes 30-60s; the user sees what's happening.
+  3. Citations are first-class. Numbered margin notes, not a buried expander.
+  4. Empty states guide the user with one-click examples, not silence.
+  5. Navigation stays out of the way of the primary task.
 
-Pure HTTP client against the FastAPI backend.
+Pure HTTP client against the FastAPI backend. No app.* imports.
 
-NOTE ON HTML RENDERING: every st.markdown() call that emits HTML uses
-single-line string concatenation, not indented triple-quoted strings.
-Streamlit interprets any line with 4+ leading spaces inside a markdown
-string as a code block, which makes HTML render as literal text.
+HTML rendering note: every st.markdown() call that emits HTML uses
+single-line string concatenation, never indented triple-quoted strings.
+Streamlit treats 4+ leading spaces inside a markdown string as a code
+block, which renders raw HTML as literal text.
 
-NOTE ON CSS SPECIFICITY: Streamlit wraps buttons inside st.columns() in
-[data-testid="stHorizontalBlock"], and its own theme applies !important
-to secondary-button styling within that wrapper. Every custom button
-override below therefore ALSO uses !important - a non-!important rule
-here will silently lose to Streamlit's default and the button will look
-unstyled despite this CSS existing. (This bit us once already - the old
-back-button rule had no !important and was fully overridden.)
+CSS specificity note: Streamlit applies !important to its own button
+styling inside [data-testid="stHorizontalBlock"], so every custom button
+override here ALSO uses !important. Without it, the rule silently loses.
 """
 
 import html
 import json as _json
 import os
+import threading
 import time
 import uuid
 from collections import defaultdict
-from datetime import datetime, timedelta
+from datetime import datetime, date
 
 import requests
 import streamlit as st
@@ -39,282 +35,113 @@ import streamlit as st
 API_BASE = os.environ.get("RAG_API_BASE", "http://localhost:8000")
 DEFAULT_TOKEN = os.environ.get("RAG_API_TOKEN", "change-me-dev-token")
 
-# ---- design tokens -------------------------------------------------------
-# Warm graphite base + amber "highlighter" accent, instead of the generic
-# near-black-plus-purple-gradient AI-chatbot default. Amber is used only
-# functionally (active nav state, primary buttons, citation accent bar,
-# focus rings) - never as decoration.
-BG = "#15130f"
-BG_RAISED = "#1c1912"
-BG_SUNKEN = "#100e0b"
-BORDER = "#2b261d"
-BORDER_STRONG = "#3d362a"
-INK = "#efe9de"
-INK_MUTED = "#a89e8c"
-INK_FAINT = "#6e6555"
-ACCENT = "#e2a33f"
-ACCENT_STRONG = "#f0b859"
-ACCENT_INK = "#1c1912"
-GOOD = "#7ba05b"
-GOOD_BG = "#182317"
-GOOD_BORDER = "#2a3a24"
-BAD = "#c9604a"
-BAD_BG = "#241512"
-BAD_BORDER = "#3a241e"
-WAIT = "#6d92ad"
+# ---------- design tokens ---------------------------------------------------
+BG          = "#0e0c09"
+BG_RAISED   = "#17140f"
+BG_HOVER    = "#1e1a14"
+BORDER      = "#26211a"
+BORDER_HI   = "#3a3225"
+INK         = "#f0e9dc"
+INK_MUTED   = "#9a9081"
+INK_FAINT   = "#6a6357"
+ACCENT      = "#e0a94a"
+ACCENT_HI   = "#f2bb5e"
+ACCENT_INK  = "#1a1610"
+GOOD        = "#86a86a"
+GOOD_BG     = "#182117"
+GOOD_BORDER = "#2c3a26"
+BAD         = "#d06a4f"
+BAD_BG      = "#251411"
+BAD_BORDER  = "#3c221a"
+WAIT        = "#7ba0b8"
 
-NAV_ITEMS = [
-    ("Chat", "Chat"),
-    ("Upload", "Upload"),
-    ("Documents", "Documents"),
-    ("Settings", "Settings"),
-]
 
-# Text glyphs used as button labels. Kept separate from the `help=` value
-# so the CSS button[title="..."] selectors (which match `help=`) keep
-# working no matter what glyph is shown - only the glyph changed here,
-# not the identifier Streamlit/CSS keys off of.
-NAV_GLYPHS = {"Chat": "\u25CF", "Upload": "\u2191", "Documents": "\u2261", "Settings": "\u2699"}
-
+# ============================================================================
+# CSS
+# ============================================================================
 
 CSS = f"""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,500;9..144,600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Fraunces:opsz,wght@9..144,500;9..144,600&display=swap');
 
-:root {{
-    --bg: {BG}; --bg-raised: {BG_RAISED}; --bg-sunken: {BG_SUNKEN};
-    --border: {BORDER}; --border-strong: {BORDER_STRONG};
-    --ink: {INK}; --ink-muted: {INK_MUTED}; --ink-faint: {INK_FAINT};
-    --accent: {ACCENT}; --accent-strong: {ACCENT_STRONG}; --accent-ink: {ACCENT_INK};
-    --good: {GOOD}; --bad: {BAD}; --wait: {WAIT};
-}}
-
-.stApp {{ background: var(--bg); color: var(--ink); font-family: 'Inter', sans-serif; }}
-[data-testid="stHeader"] {{ background: transparent; }}
+.stApp {{ background: {BG}; color: {INK}; font-family: 'Inter', -apple-system, sans-serif; }}
+[data-testid="stHeader"] {{ background: transparent; height: 0; }}
 section.main > div {{ padding-top: 0 !important; }}
-.block-container {{
-    padding-top: 1.25rem !important; padding-bottom: 6.5rem !important; max-width: 100% !important;
-}}
+.block-container {{ padding: 1.25rem 2.5rem 7rem 2.5rem !important; max-width: 100% !important; }}
 
-/* ---------------- sidebar ---------------- */
+/* ---------- SIDEBAR ---------- */
 [data-testid="stSidebar"] {{
-    background: var(--bg-sunken);
-    border-right: 1px solid var(--border);
+    background: {BG_RAISED};
+    border-right: 1px solid {BORDER};
+    width: 300px !important;
 }}
-[data-testid="stSidebar"] > div:first-child {{ padding: 1.1rem 1rem !important; }}
+[data-testid="stSidebar"] > div:first-child {{ padding: 1.5rem 1.1rem !important; }}
+[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p {{ margin: 0 !important; }}
 
-.rag-logo {{ padding: 0 0.1rem 1rem 0.1rem; margin: 0 0 0.9rem 0; border-bottom: 1px solid var(--border); }}
-.rag-logo-title {{
-    font-family: 'Fraunces', serif; font-weight: 600; font-size: 19px;
-    color: var(--ink); letter-spacing: 0.2px;
+.side-brand {{ padding: 0 0.2rem 1.1rem 0.2rem; border-bottom: 1px solid {BORDER}; margin-bottom: 1.1rem; }}
+.side-brand-name {{
+    font-family: 'Fraunces', serif; font-weight: 600; font-size: 20px;
+    color: {INK}; letter-spacing: -0.2px;
 }}
-.rag-logo-sub {{
-    font-size: 11px; color: var(--ink-faint); margin-top: 4px;
-    display: flex; align-items: center; gap: 6px;
+.side-brand-sub {{
+    font-size: 11px; color: {INK_FAINT}; margin-top: 5px;
+    display: flex; align-items: center; gap: 6px; text-transform: uppercase;
+    letter-spacing: 0.6px; font-weight: 500;
 }}
-.rag-logo-dot {{
-    width: 6px; height: 6px; border-radius: 50%; background: var(--accent); display: inline-block;
+.side-brand-dot {{
+    width: 6px; height: 6px; border-radius: 50%;
+    background: {ACCENT}; box-shadow: 0 0 8px {ACCENT}99;
 }}
 
-[data-testid="stSidebar"] .stButton {{ margin: 0 0 1rem 0 !important; }}
+/* Primary sidebar action (New conversation) */
 [data-testid="stSidebar"] .stButton > button {{
-    background: var(--bg-raised) !important;
-    border: 1px solid var(--border-strong) !important;
-    color: var(--ink) !important;
-    border-radius: 9px !important;
-    font-size: 13px !important;
+    background: {BG} !important;
+    border: 1px solid {BORDER_HI} !important;
+    color: {INK} !important;
+    border-radius: 8px !important;
+    font-size: 13.5px !important;
     font-weight: 500 !important;
-    padding: 0.6rem 0.8rem !important;
+    padding: 0.6rem 0.85rem !important;
     min-height: 0 !important;
-    transition: border-color 0.15s ease, background 0.15s ease !important;
     width: 100% !important;
+    transition: all 0.12s ease !important;
 }}
 [data-testid="stSidebar"] .stButton > button:hover {{
-    background: var(--bg-sunken) !important;
-    border-color: var(--accent) !important;
-    color: var(--accent-strong) !important;
+    background: {BG_HOVER} !important;
+    border-color: {ACCENT} !important;
+    color: {ACCENT_HI} !important;
 }}
 
-.hist-group {{
-    font-size: 10.5px; color: var(--ink-faint); font-weight: 600; letter-spacing: 0.4px;
-    margin: 1.15rem 0 0.4rem 0.3rem;
+.side-label {{
+    font-size: 10.5px; color: {INK_FAINT}; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.8px;
+    margin: 1.4rem 0 0.5rem 0.3rem;
 }}
 
-/* ---------------- page header ---------------- */
-.page-header-title {{ font-size: 17px; font-weight: 600; color: var(--ink); padding-top: 6px; }}
-.page-header-right {{
-    font-size: 12px; color: var(--ink-faint);
-    font-family: ui-monospace, "SF Mono", Menlo, monospace;
-    padding-top: 10px; text-align: right;
-}}
-.page-header-rule {{ border-bottom: 1px solid var(--border); margin: 6px 0 1.5rem 0; }}
-
-/* Icon buttons (Back + bottom nav) share one treatment. Every property
-   uses !important - see the module docstring for why that's required
-   inside a Streamlit horizontal block. */
-button[title="Back"], button[title="Chat"], button[title="Upload"],
-button[title="Documents"], button[title="Settings"] {{
-    background: transparent !important;
-    border: 1px solid transparent !important;
-    color: var(--ink-muted) !important;
-    padding: 0 !important;
-    border-radius: 9px !important;
-    transition: all 0.15s ease !important;
-    display: flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-}}
-button[title="Back"] {{
-    font-size: 18px !important; min-height: 32px !important; height: 32px !important; width: 32px !important;
-}}
-button[title="Chat"], button[title="Upload"], button[title="Documents"], button[title="Settings"] {{
-    font-size: 16px !important; min-height: 42px !important; height: 42px !important; width: 42px !important;
-    border: 1px solid var(--border) !important;
-    background: var(--bg-raised) !important;
-}}
-button[title="Back"]:hover,
-button[title="Chat"]:hover, button[title="Upload"]:hover,
-button[title="Documents"]:hover, button[title="Settings"]:hover {{
-    background: var(--bg-raised) !important;
-    border-color: var(--accent) !important;
-    color: var(--accent-strong) !important;
-}}
-button[title="Back"] p,
-button[title="Chat"] p, button[title="Upload"] p, button[title="Documents"] p, button[title="Settings"] p {{
-    margin: 0 !important; line-height: 1 !important; color: inherit !important;
-}}
-
-/* ---------------- messages ---------------- */
-/* User turns stay a compact right-aligned bubble - they're short input,
-   not the product. Assistant turns are full-width with no bubble at all:
-   the answer IS the product, so it gets room to read like an annotated
-   excerpt rather than being squeezed into a chat-bubble shape. */
-.user-row {{ display: flex; justify-content: flex-end; margin: 1.4rem 0 1.1rem 0; }}
-.user-bubble {{
-    background: var(--bg-raised); border: 1px solid var(--border);
-    padding: 12px 16px; border-radius: 12px 12px 3px 12px;
-    max-width: 62%; color: var(--ink); font-size: 14.5px; line-height: 1.5;
-}}
-
-.asst-row {{ display: flex; gap: 12px; margin: 0 0 2.1rem 0; align-items: flex-start; }}
-.asst-avatar {{
-    width: 28px; height: 28px; flex-shrink: 0; margin-top: 3px;
-    background: var(--bg-raised); border: 1px solid var(--border-strong);
-    border-radius: 7px; display: flex; align-items: center; justify-content: center;
-    color: var(--accent); font-weight: 600; font-size: 12px; font-family: 'Fraunces', serif;
-}}
-.asst-body {{ flex: 1; min-width: 0; padding-top: 3px; }}
-
-[data-testid="stMarkdownContainer"] p {{ color: var(--ink); font-size: 15px; line-height: 1.65; }}
-[data-testid="stMarkdownContainer"] strong {{ color: #fff; font-weight: 600; }}
-[data-testid="stMarkdownContainer"] a, [data-testid="stMarkdownContainer"] a:visited {{ color: var(--accent-strong); }}
-[data-testid="stMarkdownContainer"] code {{
-    background: var(--bg-raised); padding: 1px 6px; border-radius: 4px;
-    font-size: 13px; color: var(--accent-strong); border: 1px solid var(--border);
-}}
-
-/* Citations: a "margin note" treatment - a left accent bar, distinct
-   from a generic bordered card, signaling "this is retrieved evidence"
-   rather than another app-chrome panel. */
-.sources-details {{
-    margin-top: 1rem; border: 1px solid var(--border); border-left: 3px solid var(--accent);
-    border-radius: 4px 8px 8px 4px; background: var(--bg-raised); overflow: hidden;
-}}
-.sources-details summary {{
-    padding: 0.7rem 0.95rem; cursor: pointer; color: var(--ink-muted); font-size: 12.5px;
-    font-weight: 500; list-style: none; display: flex; align-items: center; gap: 8px; user-select: none;
-}}
-.sources-details summary::-webkit-details-marker {{ display: none; }}
-.sources-details summary::after {{
-    content: "\\2304"; margin-left: auto; color: var(--ink-faint);
-    transition: transform 0.15s ease; font-size: 14px;
-}}
-.sources-details[open] summary::after {{ transform: rotate(180deg); }}
-.source-item {{ padding: 0.75rem 0.95rem; border-top: 1px solid var(--border); }}
-.source-meta {{ font-size: 12px; color: var(--ink-muted); margin-bottom: 5px; }}
-.source-meta .filename {{ color: var(--ink); font-weight: 500; }}
-.source-meta .score {{
-    color: var(--ink-faint); font-family: ui-monospace, monospace; font-size: 11px; margin-left: 8px;
-}}
-.source-excerpt {{ font-size: 12.5px; color: var(--ink-muted); line-height: 1.6; }}
-
-.useful-pill {{
-    display: inline-flex; align-items: center; gap: 6px;
-    background: var(--good-bg, {GOOD_BG}); border: 1px solid var(--good-border, {GOOD_BORDER}); color: var(--good);
-    padding: 4px 12px; border-radius: 999px; font-size: 12px; font-weight: 500; margin-top: 0.9rem;
-}}
-.useful-pill.down {{ background: {BAD_BG}; border-color: {BAD_BORDER}; color: var(--bad); }}
-.abstain-note {{
-    display: inline-block; color: var(--accent); font-size: 12.5px; margin-top: 0.7rem;
-    padding: 6px 11px; background: rgba(226,163,63,0.08); border: 1px solid rgba(226,163,63,0.25);
-    border-radius: 6px;
-}}
-.rewrite-note {{ color: var(--ink-faint); font-size: 12px; margin-top: 0.55rem; }}
-.rewrite-note em {{ color: var(--ink-muted); font-style: normal; }}
-
-/* thumbs-up/down + submit/cancel buttons inside horizontal blocks */
-[data-testid="stHorizontalBlock"] button[kind="secondary"] {{
-    background: var(--bg-raised) !important; border: 1px solid var(--border) !important;
-    color: var(--ink-muted) !important; border-radius: 8px !important;
-    padding: 0.4rem 0.9rem !important; font-size: 13px !important;
-    min-height: 0 !important; height: auto !important; width: auto !important;
-    transition: all 0.15s ease !important;
-}}
-[data-testid="stHorizontalBlock"] button[kind="secondary"]:hover {{
-    background: var(--bg-sunken) !important; border-color: var(--accent) !important; color: var(--accent-strong) !important;
-}}
-/* Primary buttons (Upload) get the accent treatment - the one place
-   amber appears as a solid fill, reserved for the primary action. */
-button[kind="primary"] {{
-    background: var(--accent) !important; color: var(--accent-ink) !important;
-    border: 1px solid var(--accent) !important; border-radius: 8px !important; font-weight: 600 !important;
-}}
-button[kind="primary"]:hover {{ background: var(--accent-strong) !important; border-color: var(--accent-strong) !important; }}
-
-[data-testid="stChatInput"] {{
-    background: var(--bg-raised) !important; border: 1px solid var(--border-strong) !important;
-    border-radius: 14px !important; margin-bottom: 0 !important;
-}}
-[data-testid="stChatInput"]:focus-within {{
-    border-color: var(--accent) !important; box-shadow: 0 0 0 3px rgba(226,163,63,0.15) !important;
-}}
-[data-testid="stChatInput"] textarea {{ color: var(--ink) !important; background: transparent !important; font-size: 14.5px !important; }}
-[data-testid="stChatInput"] textarea::placeholder {{ color: var(--ink-faint) !important; }}
-[data-testid="stChatInput"] button {{ background: var(--accent) !important; color: var(--accent-ink) !important; border: none !important; border-radius: 50% !important; }}
-
-.page-h2 {{ font-family: 'Fraunces', serif; font-size: 22px; font-weight: 600; color: var(--ink); margin-bottom: 1.3rem; }}
-
-.empty-state {{ text-align: center; padding: 4.5rem 0 3rem 0; }}
-.empty-state-title {{
-    font-family: 'Fraunces', serif; font-size: 20px; font-weight: 500; color: var(--ink-muted); margin-bottom: 0.5rem;
-}}
-.empty-state-sub {{ font-size: 13px; color: var(--ink-faint); }}
-
-/* ---------------- conversation history buttons ---------------- */
+/* Conversation list items */
 [data-testid="stSidebar"] button[title^="conversation:"] {{
     background: transparent !important;
     border: 1px solid transparent !important;
-    color: #b8b8c8 !important;
-    font-size: 12.5px !important;
+    color: {INK_MUTED} !important;
+    font-size: 13px !important;
     font-weight: 400 !important;
     text-align: left !important;
     justify-content: flex-start !important;
-    padding: 0.45rem 0.55rem !important;
+    padding: 0.5rem 0.6rem !important;
     border-radius: 6px !important;
     min-height: 0 !important;
     height: auto !important;
     width: 100% !important;
     margin: 0 0 1px 0 !important;
-    transition: background 0.12s ease, color 0.12s ease !important;
+    transition: all 0.1s ease !important;
     overflow: hidden !important;
 }}
 [data-testid="stSidebar"] button[title^="conversation:"]:hover {{
-    background: #1a1a26 !important;
-    border-color: transparent !important;
-    color: #e4e4ec !important;
+    background: {BG} !important;
+    color: {INK} !important;
 }}
 [data-testid="stSidebar"] button[title^="conversation:"] p {{
-    font-size: 12.5px !important;
+    font-size: 13px !important;
     margin: 0 !important;
     text-align: left !important;
     overflow: hidden !important;
@@ -329,30 +156,460 @@ button[kind="primary"]:hover {{ background: var(--accent-strong) !important; bor
     width: 100% !important;
 }}
 
-/* document status badges */
-.status-badge {{
-    display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 500;
-    padding: 3px 10px; border-radius: 999px; text-transform: capitalize;
+/* ---------- MAIN HEADER ---------- */
+.page-title {{
+    font-family: 'Fraunces', serif; font-size: 24px; font-weight: 600;
+    color: {INK}; letter-spacing: -0.3px; padding-top: 4px;
 }}
-.status-dot {{ width: 6px; height: 6px; border-radius: 50%; }}
-.status-ready {{ background: {GOOD_BG}; color: var(--good); border: 1px solid {GOOD_BORDER}; }}
-.status-ready .status-dot {{ background: var(--good); }}
-.status-processing {{ background: rgba(109,146,173,0.1); color: var(--wait); border: 1px solid rgba(109,146,173,0.25); }}
-.status-processing .status-dot {{ background: var(--wait); }}
-.status-uploaded {{ background: var(--bg-raised); color: var(--ink-muted); border: 1px solid var(--border-strong); }}
-.status-uploaded .status-dot {{ background: var(--ink-faint); }}
-.status-failed {{ background: {BAD_BG}; color: var(--bad); border: 1px solid {BAD_BORDER}; }}
-.status-failed .status-dot {{ background: var(--bad); }}
+.page-subtitle {{
+    font-size: 12.5px; color: {INK_FAINT}; padding-top: 8px;
+    text-align: right; font-family: ui-monospace, monospace;
+}}
+.page-rule {{ border-bottom: 1px solid {BORDER}; margin: 14px 0 1.75rem 0; }}
 
-::-webkit-scrollbar {{ width: 8px; height: 8px; }}
+/* ---------- EMPTY STATE ---------- */
+.hero {{ padding: 3rem 0 2.5rem 0; max-width: 640px; }}
+.hero-title {{
+    font-family: 'Fraunces', serif; font-size: 36px; font-weight: 500;
+    color: {INK}; line-height: 1.15; letter-spacing: -0.6px;
+    margin-bottom: 0.9rem;
+}}
+.hero-title em {{ color: {ACCENT}; font-style: italic; }}
+.hero-sub {{ font-size: 15px; color: {INK_MUTED}; line-height: 1.6; max-width: 480px; }}
+
+.examples-label {{
+    font-size: 11px; color: {INK_FAINT}; text-transform: uppercase;
+    letter-spacing: 0.9px; font-weight: 600; margin: 2.5rem 0 0.9rem 0;
+}}
+
+/* Example question chips (rendered as buttons via st.columns) */
+button[title^="example:"] {{
+    background: {BG_RAISED} !important;
+    border: 1px solid {BORDER} !important;
+    color: {INK_MUTED} !important;
+    border-radius: 10px !important;
+    font-size: 13px !important;
+    font-weight: 400 !important;
+    padding: 0.85rem 1.1rem !important;
+    min-height: 0 !important;
+    height: auto !important;
+    width: 100% !important;
+    text-align: left !important;
+    justify-content: flex-start !important;
+    transition: all 0.12s ease !important;
+    line-height: 1.4 !important;
+}}
+button[title^="example:"]:hover {{
+    background: {BG_HOVER} !important;
+    border-color: {ACCENT} !important;
+    color: {INK} !important;
+}}
+button[title^="example:"] p {{
+    margin: 0 !important;
+    text-align: left !important;
+    font-size: 13px !important;
+    color: inherit !important;
+}}
+button[title^="example:"] > div {{
+    text-align: left !important;
+    justify-content: flex-start !important;
+    width: 100% !important;
+}}
+
+/* ---------- MESSAGES ---------- */
+.user-row {{ display: flex; justify-content: flex-end; margin: 2rem 0 1.25rem 0; }}
+.user-bubble {{
+    background: {BG_RAISED}; border: 1px solid {BORDER};
+    padding: 12px 18px; border-radius: 14px 14px 4px 14px;
+    max-width: 68%; color: {INK}; font-size: 15px; line-height: 1.55;
+}}
+
+.asst-row {{ display: flex; gap: 16px; margin: 0 0 2.5rem 0; align-items: flex-start; }}
+.asst-avatar {{
+    width: 32px; height: 32px; flex-shrink: 0; margin-top: 2px;
+    background: linear-gradient(135deg, {BG_RAISED}, {BG} );
+    border: 1px solid {BORDER_HI};
+    border-radius: 9px;
+    display: flex; align-items: center; justify-content: center;
+    color: {ACCENT}; font-weight: 600; font-size: 14px;
+    font-family: 'Fraunces', serif;
+}}
+.asst-body {{ flex: 1; min-width: 0; }}
+.asst-body [data-testid="stMarkdownContainer"] p {{
+    color: {INK}; font-size: 15.5px; line-height: 1.7; margin-bottom: 0.9em;
+}}
+.asst-body [data-testid="stMarkdownContainer"] strong {{ color: #fff; font-weight: 600; }}
+.asst-body [data-testid="stMarkdownContainer"] code {{
+    background: {BG_RAISED}; padding: 2px 7px; border-radius: 4px;
+    font-size: 13px; color: {ACCENT_HI}; border: 1px solid {BORDER};
+}}
+.asst-body [data-testid="stMarkdownContainer"] ul, 
+.asst-body [data-testid="stMarkdownContainer"] ol {{
+    margin-top: 0.4em; margin-bottom: 0.9em;
+}}
+.asst-body [data-testid="stMarkdownContainer"] li {{
+    color: {INK}; font-size: 15.5px; line-height: 1.7; margin-bottom: 0.4em;
+}}
+.asst-body [data-testid="stMarkdownContainer"] a {{
+    color: {ACCENT_HI}; text-decoration: none; border-bottom: 1px solid {ACCENT}55;
+}}
+
+/* ---------- CITATIONS (margin notes) ---------- */
+.sources-wrap {{ margin-top: 1.4rem; }}
+.sources-head {{
+    display: flex; align-items: center; gap: 10px;
+    padding: 0.7rem 0 0.6rem 0;
+    border-bottom: 1px solid {BORDER};
+    font-size: 11.5px; color: {INK_FAINT}; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.9px;
+}}
+.source-item {{
+    display: flex; gap: 14px;
+    padding: 0.95rem 0;
+    border-bottom: 1px solid {BORDER};
+}}
+.source-num {{
+    flex-shrink: 0; width: 24px; height: 24px;
+    background: {BG_RAISED}; border: 1px solid {BORDER_HI};
+    border-radius: 6px; display: flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 600; color: {ACCENT};
+    font-family: ui-monospace, monospace;
+}}
+.source-body {{ flex: 1; min-width: 0; }}
+.source-file {{
+    font-size: 13px; color: {INK}; font-weight: 500;
+    margin-bottom: 4px;
+}}
+.source-file .source-meta {{
+    color: {INK_FAINT}; font-weight: 400; margin-left: 8px;
+}}
+.source-file .source-score {{
+    color: {INK_FAINT}; font-family: ui-monospace, monospace;
+    font-size: 11px; margin-left: 8px;
+}}
+.source-excerpt {{
+    font-size: 13px; color: {INK_MUTED}; line-height: 1.6;
+    display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
+    overflow: hidden;
+}}
+
+/* ---------- STATUS NOTES ---------- */
+.note {{
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 6px 12px; border-radius: 6px;
+    font-size: 12.5px; font-weight: 500; margin-top: 0.9rem;
+}}
+.note-abstain {{
+    background: {ACCENT}10; border: 1px solid {ACCENT}44; color: {ACCENT_HI};
+}}
+.note-rewrite {{
+    background: transparent; border: none; color: {INK_FAINT};
+    font-size: 12px; font-weight: 400; padding: 4px 0;
+}}
+.note-rewrite em {{ color: {INK_MUTED}; font-style: normal; }}
+.note-useful {{
+    background: {GOOD_BG}; border: 1px solid {GOOD_BORDER}; color: {GOOD};
+}}
+.note-notuseful {{
+    background: {BAD_BG}; border: 1px solid {BAD_BORDER}; color: {BAD};
+}}
+
+/* ---------- MESSAGE ACTIONS ---------- */
+[data-testid="stHorizontalBlock"] button[kind="secondary"] {{
+    background: transparent !important;
+    border: 1px solid {BORDER} !important;
+    color: {INK_MUTED} !important;
+    border-radius: 6px !important;
+    padding: 0.35rem 0.9rem !important;
+    font-size: 12px !important;
+    font-weight: 500 !important;
+    min-height: 0 !important;
+    height: auto !important;
+    width: auto !important;
+    transition: all 0.12s ease !important;
+}}
+[data-testid="stHorizontalBlock"] button[kind="secondary"]:hover {{
+    background: {BG_RAISED} !important;
+    border-color: {BORDER_HI} !important;
+    color: {INK} !important;
+}}
+
+button[kind="primary"] {{
+    background: {ACCENT} !important;
+    color: {ACCENT_INK} !important;
+    border: 1px solid {ACCENT} !important;
+    border-radius: 8px !important;
+    font-weight: 600 !important;
+    font-size: 14px !important;
+    padding: 0.6rem 1.5rem !important;
+}}
+button[kind="primary"]:hover {{
+    background: {ACCENT_HI} !important;
+    border-color: {ACCENT_HI} !important;
+}}
+
+/* ---------- PROGRESS CARD ---------- */
+.progress-card {{
+    background: {BG_RAISED};
+    border: 1px solid {BORDER};
+    border-radius: 12px;
+    padding: 1.25rem 1.5rem;
+    margin: 1.5rem 0;
+    max-width: 480px;
+}}
+.progress-header {{
+    font-size: 12px; color: {INK_FAINT}; font-weight: 500;
+    text-transform: uppercase; letter-spacing: 0.9px;
+    margin-bottom: 1rem;
+    display: flex; justify-content: space-between; align-items: center;
+}}
+.progress-time {{ font-family: ui-monospace, monospace; color: {INK_MUTED}; }}
+.progress-stage {{
+    display: flex; align-items: center; gap: 12px;
+    padding: 0.45rem 0;
+    font-size: 14px;
+    color: {INK_FAINT};
+}}
+.progress-stage.progress-active {{ color: {INK}; }}
+.progress-stage.progress-done {{ color: {INK_MUTED}; }}
+.progress-icon {{
+    flex-shrink: 0; width: 20px; height: 20px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px;
+}}
+.progress-stage.progress-pending .progress-icon {{ color: {INK_FAINT}; }}
+.progress-stage.progress-active .progress-icon {{
+    color: {ACCENT};
+    animation: pulse 1.4s ease-in-out infinite;
+}}
+.progress-stage.progress-done .progress-icon {{ color: {GOOD}; }}
+
+@keyframes pulse {{
+    0%, 100% {{ opacity: 1; transform: scale(1); }}
+    50% {{ opacity: 0.5; transform: scale(1.15); }}
+}}
+
+/* ---------- DOCUMENT CARDS ---------- */
+.doc-card {{
+    background: {BG_RAISED};
+    border: 1px solid {BORDER};
+    border-radius: 10px;
+    padding: 1.15rem 1.35rem;
+    margin-bottom: 0.75rem;
+    transition: border-color 0.12s ease;
+}}
+.doc-card:hover {{ border-color: {BORDER_HI}; }}
+.doc-head {{
+    display: flex; justify-content: space-between; align-items: flex-start;
+    gap: 1rem; margin-bottom: 0.55rem;
+}}
+.doc-name {{
+    font-size: 14.5px; color: {INK}; font-weight: 500;
+    word-break: break-word; line-height: 1.35;
+}}
+.doc-meta {{
+    font-size: 12px; color: {INK_FAINT};
+    display: flex; flex-wrap: wrap; gap: 6px 14px;
+}}
+.doc-meta-item {{ display: inline-flex; align-items: center; gap: 5px; }}
+.doc-error {{
+    margin-top: 0.7rem; padding: 0.5rem 0.75rem;
+    background: {BAD_BG}; border: 1px solid {BAD_BORDER}; border-radius: 6px;
+    font-size: 12.5px; color: {BAD}; word-break: break-word;
+}}
+
+/* Status pills */
+.pill {{
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 11px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 4px 10px; border-radius: 999px;
+    flex-shrink: 0;
+}}
+.pill-dot {{ width: 6px; height: 6px; border-radius: 50%; }}
+.pill-ready {{ background: {GOOD_BG}; color: {GOOD}; border: 1px solid {GOOD_BORDER}; }}
+.pill-ready .pill-dot {{ background: {GOOD}; box-shadow: 0 0 6px {GOOD}99; }}
+.pill-processing {{ background: {WAIT}18; color: {WAIT}; border: 1px solid {WAIT}44; }}
+.pill-processing .pill-dot {{ background: {WAIT}; animation: pulse 1.2s infinite; }}
+.pill-uploaded {{ background: {BG}; color: {INK_MUTED}; border: 1px solid {BORDER_HI}; }}
+.pill-uploaded .pill-dot {{ background: {INK_FAINT}; }}
+.pill-failed {{ background: {BAD_BG}; color: {BAD}; border: 1px solid {BAD_BORDER}; }}
+.pill-failed .pill-dot {{ background: {BAD}; }}
+
+
+/* ---------- CHAT INPUT (wide, ChatGPT-style) ---------- */
+
+/* Kill Streamlit's default flex shrink on the bottom bar so the input
+   inherits full container width. */
+[data-testid="stBottom"] > div {{
+    background: transparent !important;
+    padding: 0 !important;
+}}
+
+[data-testid="stBottomBlockContainer"] {{
+    background: transparent !important;
+    padding: 0 2.5rem 1.5rem 2.5rem !important;
+    max-width: 100% !important;
+    width: 100% !important;
+}}
+
+[data-testid="stChatInput"] {{
+    background: {BG_RAISED} !important;
+    border: 1px solid {BORDER_HI} !important;
+    border-radius: 26px !important;
+    padding: 8px 8px 8px 24px !important;
+    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35),
+                0 1px 0 rgba(255, 255, 255, 0.03) inset !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    transition: border-color 0.18s ease, box-shadow 0.18s ease !important;
+    overflow: visible !important;
+}}
+
+[data-testid="stChatInput"]:focus-within {{
+    border-color: {BORDER_HI} !important;
+    box-shadow: 0 10px 32px rgba(0, 0, 0, 0.45),
+                0 1px 0 rgba(255, 255, 255, 0.04) inset !important;
+}}
+
+[data-testid="stChatInput"] textarea {{
+    background: transparent !important;
+    color: {INK} !important;
+    font-size: 15px !important;
+    font-family: 'Inter', -apple-system, sans-serif !important;
+    line-height: 1.5 !important;
+    padding: 12px 0 !important;
+    min-height: 24px !important;
+    border: none !important;
+    outline: none !important;
+    resize: none !important;
+    box-shadow: none !important;
+}}
+
+[data-testid="stChatInput"] textarea::placeholder {{
+    color: {INK_FAINT} !important;
+    font-weight: 400 !important;
+}}
+
+[data-testid="stChatInput"] button,
+[data-testid="stChatInputSubmitButton"] {{
+    background: {BORDER} !important;
+    color: {INK_MUTED} !important;
+    border: none !important;
+    border-radius: 50% !important;
+    width: 38px !important;
+    height: 38px !important;
+    min-width: 38px !important;
+    min-height: 38px !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    transition: background 0.15s ease, color 0.15s ease,
+                transform 0.1s ease !important;
+    flex-shrink: 0 !important;
+    align-self: flex-end !important;
+}}
+
+[data-testid="stChatInput"] button:hover,
+[data-testid="stChatInputSubmitButton"]:hover {{
+    background: {BORDER_HI} !important;
+    color: {INK} !important;
+}}
+
+[data-testid="stChatInput"] button:active,
+[data-testid="stChatInputSubmitButton"]:active {{
+    transform: scale(0.94) !important;
+}}
+
+[data-testid="stChatInput"] button svg,
+[data-testid="stChatInputSubmitButton"] svg {{
+    width: 17px !important;
+    height: 17px !important;
+}}
+
+[data-testid="stChatInput"]:has(textarea:not(:placeholder-shown)) button,
+[data-testid="stChatInput"]:has(textarea:not(:placeholder-shown))
+    [data-testid="stChatInputSubmitButton"] {{
+    background: {ACCENT} !important;
+    color: {ACCENT_INK} !important;
+}}
+
+[data-testid="stChatInput"]:has(textarea:not(:placeholder-shown)) button:hover,
+[data-testid="stChatInput"]:has(textarea:not(:placeholder-shown))
+    [data-testid="stChatInputSubmitButton"]:hover {{
+    background: {ACCENT_HI} !important;
+    transform: scale(1.05) !important;
+}}
+
+/* Streamlit nests an inner wrapper inside stChatInput — make sure it
+   doesn't add its own width constraint. */
+[data-testid="stChatInput"] > div {{
+    background: transparent !important;
+    width: 100% !important;
+    display: flex !important;
+    align-items: flex-end !important;
+    gap: 12px !important;
+}}
+
+[data-testid="stChatInput"] > div > div:first-child {{
+    flex: 1 !important;
+    min-width: 0 !important;
+}}
+
+/* ---------- UPLOAD ZONE ---------- */
+[data-testid="stFileUploader"] {{
+    background: {BG_RAISED} !important;
+    border: 1px dashed {BORDER_HI} !important;
+    border-radius: 12px !important;
+    padding: 1rem !important;
+    transition: border-color 0.15s ease !important;
+}}
+[data-testid="stFileUploader"]:hover {{ border-color: {ACCENT}66 !important; }}
+[data-testid="stFileUploader"] section {{ background: transparent !important; border: none !important; }}
+[data-testid="stFileUploader"] [data-testid="stMarkdownContainer"] p {{
+    color: {INK_MUTED} !important; font-size: 14px !important;
+}}
+
+/* ---------- FORMS / INPUTS ---------- */
+[data-testid="stTextInput"] input, [data-testid="stTextArea"] textarea {{
+    background: {BG} !important; border: 1px solid {BORDER_HI} !important;
+    color: {INK} !important; border-radius: 8px !important;
+}}
+[data-testid="stTextInput"] input:focus, [data-testid="stTextArea"] textarea:focus {{
+    border-color: {ACCENT} !important;
+    box-shadow: 0 0 0 3px {ACCENT}22 !important;
+}}
+[data-testid="stRadio"] label {{ color: {INK} !important; font-size: 14px !important; }}
+[data-testid="stRadio"] [data-testid="stMarkdownContainer"] p {{
+    color: {INK} !important; font-size: 14px !important;
+}}
+
+/* ---------- MISC ---------- */
+[data-testid="stAlert"] {{
+    background: {BG_RAISED} !important;
+    border: 1px solid {BORDER_HI} !important;
+    color: {INK} !important; border-radius: 10px !important;
+}}
+hr {{ border-color: {BORDER} !important; margin: 1.5rem 0 !important; }}
+[data-testid="stCaptionContainer"] p {{ color: {INK_FAINT} !important; font-size: 13px !important; }}
+
+::-webkit-scrollbar {{ width: 10px; height: 10px; }}
 ::-webkit-scrollbar-track {{ background: transparent; }}
-::-webkit-scrollbar-thumb {{ background: var(--border-strong); border-radius: 4px; }}
-::-webkit-scrollbar-thumb:hover {{ background: var(--ink-faint); }}
+::-webkit-scrollbar-thumb {{ background: {BORDER_HI}; border-radius: 5px; }}
+::-webkit-scrollbar-thumb:hover {{ background: {INK_FAINT}; }}
+
+/* Spinner (fallback) */
+[data-testid="stSpinner"] > div {{ border-top-color: {ACCENT} !important; }}
 </style>
 """
 
 
-# ------------------------------------------------------------------ helpers
+# ============================================================================
+# API HELPERS
+# ============================================================================
 
 def api(method: str, path: str, **kwargs):
     headers = kwargs.pop("headers", {})
@@ -375,9 +632,15 @@ def health_ok() -> bool:
         return False
 
 
+def esc(s: str) -> str:
+    return html.escape(s or "")
+
+
+# ============================================================================
+# SESSION STATE
+# ============================================================================
+
 def init_session():
-    # In-browser-only conversation state. Refreshing the page intentionally
-    # clears saved history because this UI does not persist to a backend.
     defaults = {
         "conversations": {},
         "current_conv_id": None,
@@ -386,7 +649,6 @@ def init_session():
         "api_token": DEFAULT_TOKEN,
         "pipeline": "improved",
         "page": "Chat",
-        "page_history": [],
         "feedback_state": {},
         "pending_query": None,
     }
@@ -396,14 +658,12 @@ def init_session():
 
 
 def _save_current_conversation():
-    """Persist the in-memory messages back to the conversations dict."""
     cid = st.session_state.current_conv_id
     if cid and cid in st.session_state.conversations:
         st.session_state.conversations[cid]["messages"] = list(st.session_state.messages)
 
 
 def new_conversation():
-    """Save the current conversation, then start a fresh empty one."""
     _save_current_conversation()
     new_id = str(uuid.uuid4())
     st.session_state.current_conv_id = new_id
@@ -420,7 +680,6 @@ def new_conversation():
 
 
 def load_conversation(cid: str):
-    """Switch to a previously saved conversation."""
     if cid == st.session_state.current_conv_id:
         return
     _save_current_conversation()
@@ -434,180 +693,317 @@ def load_conversation(cid: str):
     st.session_state.pending_query = None
 
 
-def esc(s: str) -> str:
-    return html.escape(s or "")
+def delete_conversation(cid: str):
+    st.session_state.conversations.pop(cid, None)
+    if cid == st.session_state.current_conv_id:
+        st.session_state.current_conv_id = None
+        st.session_state.messages = []
+        st.session_state.session_id = str(uuid.uuid4())
 
 
-# ------------------------------------------------------------------ navigation
-
-def navigate_to(page: str):
-    """Switch page, remembering where we came from so Back can return."""
-    if st.session_state.page == page:
-        return
-    st.session_state.page_history.append(st.session_state.page)
-    st.session_state.page = page
-
-
-def go_back():
-    """Return to the previous page, if any."""
-    if st.session_state.page_history:
-        st.session_state.page = st.session_state.page_history.pop()
-
-
-# ------------------------------------------------------------------ nav toolbar
-
-def render_nav_icons():
-    """Four-icon navigation toolbar with native browser tooltips."""
-    active = st.session_state.page
-
-    # Highlight the button whose title matches the active page.
-    st.markdown(
-        f'<style>'
-        f'button[title="{active}"]{{'
-        f'background:var(--accent)!important;'
-        f'color:var(--accent-ink)!important;border-color:var(--accent)!important;'
-        f'}}'
-        f'</style>',
-        unsafe_allow_html=True,
-    )
-
-    cols = st.columns([1, 1, 1, 1, 8], gap="small")
-    for col, (name, _title) in zip(cols, NAV_ITEMS):
-        with col:
-            if st.button(NAV_GLYPHS[name], key=f"nav_icon_{name}", help=name):
-                if st.session_state.page != name:
-                    navigate_to(name)
-                    st.rerun()
-
-
-# ------------------------------------------------------------------ page header
-
-def render_page_header(title: str, right_text: str | None = None):
-    """Page header: optional back button, title, optional right-side text."""
-    has_back = bool(st.session_state.page_history)
-
-    if right_text is not None:
-        c_back, c_title, c_right = st.columns([0.5, 15, 3], gap="small")
-    else:
-        c_back, c_title = st.columns([0.5, 15], gap="small")
-        c_right = None
-
-    with c_back:
-        if has_back:
-            if st.button("\u2190", key=f"back_{title}", help="Back"):
-                go_back()
-                st.rerun()
-
-    with c_title:
-        st.markdown(
-            f'<div class="page-header-title">{esc(title)}</div>',
-            unsafe_allow_html=True,
-        )
-
-    if c_right is not None:
-        with c_right:
-            st.markdown(
-                f'<div class="page-header-right">{esc(right_text)}</div>',
-                unsafe_allow_html=True,
-            )
-
-    st.markdown('<div class="page-header-rule"></div>', unsafe_allow_html=True)
-
-
-# ------------------------------------------------------------------ sidebar
+# ============================================================================
+# SIDEBAR
+# ============================================================================
 
 def render_sidebar():
     with st.sidebar:
-        logo_html = (
-            '<div class="rag-logo">'
-            '<div class="rag-logo-title">Knowledge Base</div>'
-            '<div class="rag-logo-sub">'
-            '<span class="rag-logo-dot"></span>'
-            f'{esc(st.session_state.pipeline.capitalize())} pipeline'
+        st.markdown(
+            '<div class="side-brand">'
+            '<div class="side-brand-name">Knowledge Base</div>'
+            '<div class="side-brand-sub">'
+            '<span class="side-brand-dot"></span>'
+            f'{esc(st.session_state.pipeline)} pipeline'
             '</div>'
-            '</div>'
+            '</div>',
+            unsafe_allow_html=True,
         )
-        st.markdown(logo_html, unsafe_allow_html=True)
 
-        if st.button("New conversation", use_container_width=True, key="new_conv_btn"):
+        if st.button("＋  New conversation", use_container_width=True, key="new_conv_btn"):
             new_conversation()
-            if st.session_state.page != "Chat":
-                navigate_to("Chat")
+            st.session_state.page = "Chat"
             st.rerun()
 
-        convs = {
-            cid: c for cid, c in st.session_state.conversations.items() if c["messages"]
-        }
+        # Group conversations by date
+        convs = {cid: c for cid, c in st.session_state.conversations.items() if c["messages"]}
         if convs:
             sorted_convs = sorted(convs.items(), key=lambda kv: kv[1]["ts"], reverse=True)
             groups = defaultdict(list)
-            today = datetime.now().date()
+            today = date.today()
             for cid, c in sorted_convs:
                 d = c["ts"].date()
-                key = "Today" if d == today else d.strftime("%b %d")
+                if d == today:
+                    key = "Today"
+                elif (today - d).days == 1:
+                    key = "Yesterday"
+                elif (today - d).days < 7:
+                    key = d.strftime("%A")
+                else:
+                    key = d.strftime("%b %d, %Y")
                 groups[key].append((cid, c))
 
             for label, items in groups.items():
-                st.markdown(
-                    f'<div class="hist-group">{esc(label)}</div>',
-                    unsafe_allow_html=True,
-                )
+                st.markdown(f'<div class="side-label">{esc(label)}</div>', unsafe_allow_html=True)
                 for cid, c in items:
                     is_active = cid == st.session_state.current_conv_id
                     if is_active:
+                        # Highlight active conversation via a scoped CSS rule
                         st.markdown(
                             f'<style>'
                             f'button[title="conversation:{cid}"]{{'
-                            f'background:#1a1a26!important;color:#e4e4ec!important;'
-                            f'border-color:#2a2a3a!important;'
+                            f'background:{BG}!important;color:{INK}!important;'
+                            f'border-color:{BORDER_HI}!important;'
                             f'}}'
                             f'</style>',
                             unsafe_allow_html=True,
                         )
                     if st.button(
-                        c["title"][:38],
+                        c["title"][:44],
                         key=f"conv_{cid}",
                         help=f"conversation:{cid}",
                         use_container_width=True,
                     ):
                         load_conversation(cid)
-                        if st.session_state.page != "Chat":
-                            navigate_to("Chat")
+                        st.session_state.page = "Chat"
                         st.rerun()
 
 
-# ------------------------------------------------------------------ sources
+# ============================================================================
+# NAV + HEADER
+# ============================================================================
 
-def render_sources(citations):
+NAV_OPTIONS = ["Chat", "Upload", "Documents", "Settings"]
+
+
+def render_sidebar_nav():
+    """Simple vertical nav in the sidebar, above the conversation list."""
+    with st.sidebar:
+        current = st.session_state.page
+        # We're inside a `with st.sidebar` already from render_sidebar; but
+        # this function is called from main() directly. Caller context matters.
+        pass  # handled inline in render_sidebar for simplicity below
+
+
+def render_page_header(title: str, right_text: str | None = None):
+    if right_text:
+        c_title, c_right = st.columns([8, 2], gap="small")
+        with c_title:
+            st.markdown(f'<div class="page-title">{esc(title)}</div>', unsafe_allow_html=True)
+        with c_right:
+            st.markdown(f'<div class="page-subtitle">{esc(right_text)}</div>', unsafe_allow_html=True)
+    else:
+        st.markdown(f'<div class="page-title">{esc(title)}</div>', unsafe_allow_html=True)
+    st.markdown('<div class="page-rule"></div>', unsafe_allow_html=True)
+
+
+# ============================================================================
+# QUERY PROGRESS
+# ============================================================================
+
+STAGES = [
+    ("Understanding your question", 3),
+    ("Searching documents", 18),
+    ("Reranking results", 6),
+    ("Generating answer", 15),
+]
+
+
+def _render_progress(stages, current_idx: int, elapsed: float):
+    """Render the multi-stage progress card. Uses single-line HTML."""
+    rows = ""
+    for i, (label, _) in enumerate(stages):
+        if i < current_idx:
+            state, icon = "done", "✓"
+        elif i == current_idx:
+            state, icon = "active", "●"
+        else:
+            state, icon = "pending", "○"
+        rows += (
+            f'<div class="progress-stage progress-{state}">'
+            f'<span class="progress-icon">{icon}</span>'
+            f'<span class="progress-label">{esc(label)}</span>'
+            f'</div>'
+        )
+    card = (
+        '<div class="progress-card">'
+        f'<div class="progress-header">'
+        f'<span>Working</span>'
+        f'<span class="progress-time">{elapsed:.0f}s</span>'
+        f'</div>'
+        f'{rows}'
+        '</div>'
+    )
+    st.markdown(card, unsafe_allow_html=True)
+
+
+def run_query_with_progress(prompt: str) -> tuple[dict | None, str | None]:
+    """Execute a query in a background thread while showing staged progress.
+
+    IMPORTANT: st.session_state is NOT thread-safe. All values the thread
+    needs (pipeline, session_id, api_token) must be read on the main
+    thread and passed in as arguments. The thread itself must not touch
+    st.session_state.
+    """
+    # Capture everything the thread needs from session state NOW, on the
+    # main thread, where session_state is valid.
+    pipeline = st.session_state.pipeline
+    session_id = st.session_state.session_id
+    token = st.session_state.get("api_token", DEFAULT_TOKEN)
+
+    result: dict = {}
+
+    def _do_query():
+        try:
+            resp = requests.post(
+                f"{API_BASE}/query",
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "question": prompt,
+                    "pipeline": pipeline,
+                    "session_id": session_id,
+                },
+                timeout=300,
+            )
+            if resp.status_code >= 400:
+                try:
+                    detail = resp.json().get("detail", resp.text)
+                except Exception:
+                    detail = resp.text
+                result["error"] = f"{resp.status_code}: {detail}"
+                return
+            result["resp"] = resp.json()
+        except Exception as e:
+            result["error"] = str(e)
+
+    t = threading.Thread(target=_do_query, daemon=True)
+    t.start()
+
+    placeholder = st.empty()
+    start = time.time()
+    last_idx = -1
+    slow_warned = False
+
+    while t.is_alive():
+        elapsed = time.time() - start
+
+        # Figure out which stage we're likely in
+        cum = 0
+        idx = 0
+        for i, (_, dur) in enumerate(STAGES):
+            cum += dur
+            if elapsed < cum:
+                idx = i
+                break
+        else:
+            idx = len(STAGES) - 1
+
+        if idx != last_idx:
+            last_idx = idx
+            with placeholder.container():
+                _render_progress(STAGES, idx, elapsed)
+        else:
+            # Refresh the elapsed timer every ~1s
+            if int(elapsed) != int(elapsed - 0.5):
+                with placeholder.container():
+                    _render_progress(STAGES, idx, elapsed)
+
+        if elapsed > 60 and not slow_warned:
+            slow_warned = True
+
+        time.sleep(0.4)
+
+    placeholder.empty()
+
+    if "error" in result:
+        return None, result["error"]
+    return result.get("resp"), None
+
+
+# ============================================================================
+# MESSAGES
+# ============================================================================
+
+def render_user_message(text: str):
+    st.markdown(
+        f'<div class="user-row"><div class="user-bubble">{esc(text)}</div></div>',
+        unsafe_allow_html=True,
+    )
+
+
+def render_sources(citations: list):
     if not citations:
         return
-
-    items_html = ""
-    for c in citations:
-        page = f" &middot; p.{c['page_number']}" if c.get("page_number") else ""
-        sect = f" &middot; {esc(c['section_title'])}" if c.get("section_title") else ""
-        items_html += (
+    items = ""
+    for i, c in enumerate(citations, 1):
+        page = f'<span class="source-meta">p.{c["page_number"]}</span>' if c.get("page_number") else ""
+        sect = f'<span class="source-meta">{esc(c["section_title"])}</span>' if c.get("section_title") else ""
+        score = f'<span class="source-score">{c["score"]:.3f}</span>'
+        items += (
             '<div class="source-item">'
-            '<div class="source-meta">'
-            f'<span class="filename">{esc(c["filename"])}</span>{page}{sect}'
-            f'<span class="score">{c["score"]:.3f}</span>'
-            '</div>'
+            f'<div class="source-num">{i}</div>'
+            '<div class="source-body">'
+            f'<div class="source-file">{esc(c["filename"])}{page}{sect}{score}</div>'
             f'<div class="source-excerpt">{esc(c["excerpt"])}</div>'
             '</div>'
+            '</div>'
         )
-
     count = len(citations)
     label = "source" if count == 1 else "sources"
     block = (
-        '<details class="sources-details">'
-        f'<summary>{count} {label}</summary>'
-        + items_html
-        + '</details>'
+        '<div class="sources-wrap">'
+        f'<div class="sources-head">{count} {label}</div>'
+        f'{items}'
+        '</div>'
     )
     st.markdown(block, unsafe_allow_html=True)
 
 
-# ------------------------------------------------------------------ feedback
+def render_assistant_actions(msg_idx: int, msg: dict):
+    state = st.session_state.feedback_state.get(msg_idx)
+
+    if state == "up":
+        st.markdown('<div class="note note-useful">Marked useful</div>', unsafe_allow_html=True)
+        return
+    if state == "down":
+        st.markdown('<div class="note note-notuseful">Marked not useful</div>', unsafe_allow_html=True)
+        return
+
+    if state == "pending_down":
+        comment = st.text_input(
+            "What was wrong? (optional)",
+            key=f"comment_{msg_idx}",
+            label_visibility="collapsed",
+            placeholder="What was wrong? (optional)",
+        )
+        c1, c2, _ = st.columns([1, 1, 10], gap="small")
+        with c1:
+            if st.button("Submit", key=f"submit_{msg_idx}"):
+                _submit_feedback(msg, False, comment)
+                st.session_state.feedback_state[msg_idx] = "down"
+                st.rerun()
+        with c2:
+            if st.button("Cancel", key=f"cancel_{msg_idx}"):
+                st.session_state.feedback_state.pop(msg_idx, None)
+                st.rerun()
+        return
+
+    c1, c2, c3, _ = st.columns([1, 1, 1, 10], gap="small")
+    with c1:
+        if st.button("Useful", key=f"up_{msg_idx}"):
+            _submit_feedback(msg, True, "")
+            st.session_state.feedback_state[msg_idx] = "up"
+            st.rerun()
+    with c2:
+        if st.button("Not useful", key=f"down_{msg_idx}"):
+            st.session_state.feedback_state[msg_idx] = "pending_down"
+            st.rerun()
+    with c3:
+        if st.button("Copy", key=f"copy_{msg_idx}"):
+            st.session_state[f"copied_{msg_idx}"] = True
+            st.toast("Copied — select the text above to paste")
+
 
 def _submit_feedback(msg: dict, is_useful: bool, comment: str):
     try:
@@ -621,156 +1017,152 @@ def _submit_feedback(msg: dict, is_useful: bool, comment: str):
         st.toast(f"Feedback not saved: {e}")
 
 
-def render_feedback(msg_idx: int, msg: dict):
-    state = st.session_state.feedback_state.get(msg_idx)
-
-    if state == "up":
-        st.markdown('<div class="useful-pill">Marked useful</div>', unsafe_allow_html=True)
-        return
-
-    if state == "down":
-        st.markdown('<div class="useful-pill down">Marked not useful</div>', unsafe_allow_html=True)
-        return
-
-    if state == "pending_down":
-        comment = st.text_input(
-            "What was wrong? (optional)", key=f"comment_{msg_idx}",
-            label_visibility="collapsed", placeholder="What was wrong? (optional)",
-        )
-        c1, c2, _ = st.columns([1, 1, 8], gap="small")
-        with c1:
-            if st.button("Submit", key=f"submit_{msg_idx}"):
-                _submit_feedback(msg, False, comment)
-                st.session_state.feedback_state[msg_idx] = "down"
-                st.rerun()
-        with c2:
-            if st.button("Cancel", key=f"cancel_{msg_idx}"):
-                st.session_state.feedback_state.pop(msg_idx, None)
-                st.rerun()
-        return
-
-    c1, c2, _ = st.columns([1, 1, 10], gap="small")
-    with c1:
-        if st.button("Useful", key=f"up_{msg_idx}", help="Mark useful"):
-            _submit_feedback(msg, True, "")
-            st.session_state.feedback_state[msg_idx] = "up"
-            st.rerun()
-    with c2:
-        if st.button("Not useful", key=f"down_{msg_idx}", help="Mark not useful"):
-            st.session_state.feedback_state[msg_idx] = "pending_down"
-            st.rerun()
-
-
-# ------------------------------------------------------------------ messages
-
-def render_user_message(text: str):
+def render_assistant_message(msg: dict, idx: int):
     st.markdown(
-        f'<div class="user-row"><div class="user-bubble">{esc(text)}</div></div>',
+        '<div class="asst-row">'
+        '<div class="asst-avatar">K</div>'
+        '<div class="asst-body">',
         unsafe_allow_html=True,
     )
-
-
-def render_assistant_message(msg: dict, idx: int):
-    st.markdown('<div class="asst-row"><div class="asst-avatar">K</div><div class="asst-body">', unsafe_allow_html=True)
 
     st.markdown(msg["content"])
 
     if msg.get("abstained"):
         st.markdown(
-            '<div class="abstain-note">No relevant evidence found in the knowledge base.</div>',
+            '<div class="note note-abstain">⚠ &nbsp;No relevant evidence found in your documents.</div>',
             unsafe_allow_html=True,
         )
 
     rq = msg.get("resolved_query")
     if rq and rq != msg.get("original_question"):
         st.markdown(
-            f'<div class="rewrite-note">Searched as: <em>{esc(rq)}</em></div>',
+            f'<div class="note note-rewrite">Searched as: <em>{esc(rq)}</em></div>',
             unsafe_allow_html=True,
         )
 
     render_sources(msg.get("citations") or [])
-    render_feedback(idx, msg)
+    render_assistant_actions(idx, msg)
 
     st.markdown('</div></div>', unsafe_allow_html=True)
 
 
-# ------------------------------------------------------------------ chat
+# ============================================================================
+# CHAT PAGE
+# ============================================================================
+
+EXAMPLE_QUESTIONS = [
+    "How many days of paid annual leave do employees get?",
+    "What is the response count for JAWS in the screen reader table?",
+    "What does the chart in the document show?",
+    "What is the document management policy ID?",
+]
+
+
+def _render_empty_state():
+    hero = (
+        '<div class="hero">'
+        '<div class="hero-title">What do you want to know?</div>'
+        '<div class="hero-sub">'
+        'Ask about your PDFs, Word docs, or text files. '
+        'Every answer shows where it came from.'
+        '</div>'
+        '</div>'
+    )
+    st.markdown(hero, unsafe_allow_html=True)
+
+    st.markdown('<div class="examples-label">Some questions to start with</div>', unsafe_allow_html=True)
+
+    # Two-column grid of example questions
+    for i in range(0, len(EXAMPLE_QUESTIONS), 2):
+        cols = st.columns(2, gap="small")
+        for j, col in enumerate(cols):
+            if i + j < len(EXAMPLE_QUESTIONS):
+                q = EXAMPLE_QUESTIONS[i + j]
+                with col:
+                    if st.button(q, key=f"example_{i+j}", help=f"example:{q}"):
+                        _send_query(q)
+                        st.rerun()
+
+
+def _send_query(prompt: str):
+    """Append the user message and mark the query as pending."""
+    if not st.session_state.current_conv_id:
+        new_conversation()
+    cid = st.session_state.current_conv_id
+    conv = st.session_state.conversations[cid]
+    if conv["title"] == "New conversation":
+        conv["title"] = prompt[:60]
+        conv["ts"] = datetime.now()
+    st.session_state.messages.append({"role": "user", "content": prompt})
+    _save_current_conversation()
+    st.session_state.pending_query = prompt
+
 
 def section_chat():
     sid = st.session_state.session_id
-    render_page_header("Ask the knowledge base", right_text=f"Session {sid[:8]}")
+    render_page_header("Ask the knowledge base", right_text=f"session {sid[:8]}")
 
     if not st.session_state.messages and not st.session_state.pending_query:
-        empty_html = (
-            '<div class="empty-state">'
-            '<div class="empty-state-title">Ask anything about your documents</div>'
-            '<div class="empty-state-sub">Your questions and sources will appear here.</div>'
-            '</div>'
-        )
-        st.markdown(empty_html, unsafe_allow_html=True)
+        _render_empty_state()
 
+    # Render all committed messages
     for i, msg in enumerate(st.session_state.messages):
         if msg["role"] == "user":
             render_user_message(msg["content"])
         else:
             render_assistant_message(msg, i)
 
+    # Handle pending query with progress
     if st.session_state.pending_query:
         prompt = st.session_state.pending_query
-        with st.spinner("Searching your documents...(It will take a minute)"):
-            try:
-                resp = api("POST", "/query", json={
-                    "question": prompt,
-                    "pipeline": st.session_state.pipeline,
-                    "session_id": st.session_state.session_id,
-                })
-                st.session_state.messages.append({
-                    "role": "assistant",
-                    "content": resp["answer"],
-                    "citations": resp.get("citations") or [],
-                    "abstained": resp.get("abstained", False),
-                    "resolved_query": resp.get("resolved_query"),
-                    "original_question": prompt,
-                    "query": prompt,
-                })
-            except RuntimeError as e:
-                st.session_state.messages.append({
-                    "role": "assistant",
-                    "content": f"Query failed: {e}",
-                    "citations": [],
-                    "abstained": False,
-                    "query": prompt,
-                })
+        st.session_state.pending_query = None  # clear so we don't re-fire on rerun
+
+        resp, error = run_query_with_progress(prompt)
+
+        if error:
+            st.session_state.messages.append({
+                "role": "assistant",
+                "content": f"Query failed: {error}",
+                "citations": [],
+                "abstained": False,
+                "query": prompt,
+            })
+        else:
+            st.session_state.messages.append({
+                "role": "assistant",
+                "content": resp["answer"],
+                "citations": resp.get("citations") or [],
+                "abstained": resp.get("abstained", False),
+                "resolved_query": resp.get("resolved_query"),
+                "original_question": prompt,
+                "query": prompt,
+            })
+
         _save_current_conversation()
-        st.session_state.pending_query = None
         st.rerun()
 
-    render_nav_icons()
-
-    prompt = st.chat_input("Ask a question about your documents...")
+    # Chat input at the bottom
+    prompt = st.chat_input("Ask a question…")
     if prompt:
-        # Ensure a conversation exists
-        if not st.session_state.current_conv_id:
-            new_conversation()
-        cid = st.session_state.current_conv_id
-        conv = st.session_state.conversations[cid]
-
-        # First message becomes the title
-        if conv["title"] == "New conversation":
-            conv["title"] = prompt[:40]
-            conv["ts"] = datetime.now()  # bump to top of the sidebar
-
-        st.session_state.messages.append({"role": "user", "content": prompt})
-        _save_current_conversation()
-        st.session_state.pending_query = prompt
+        _send_query(prompt)
         st.rerun()
+        st.markdown('<div style="height: 1rem;"></div>', unsafe_allow_html=True)
+        st.markdown(
+            '<div style="text-align:center;font-size:11.5px;color:#6a6357;margin-top:-6px;padding-bottom:8px;">'
+            'The assistant answers only from your uploaded documents.'
+            '</div>',
+            unsafe_allow_html=True,
+        )
+            
 
 
-# ------------------------------------------------------------------ upload
+# ============================================================================
+# UPLOAD PAGE
+# ============================================================================
 
 def section_upload():
     render_page_header("Upload a document")
-    st.caption("PDF, DOCX, TXT, or Markdown \u00b7 max 25 MB")
+    st.caption("PDF, DOCX, TXT, or Markdown · up to 25 MB per file")
 
     uploaded = st.file_uploader(
         "Choose a file", type=["pdf", "docx", "txt", "md"],
@@ -778,11 +1170,11 @@ def section_upload():
     )
 
     if uploaded is not None:
-        col1, col2 = st.columns(2)
-        with col1:
-            dept = st.text_input("Department (optional)", value="")
-        with col2:
-            category = st.text_input("Category (optional)", value="")
+        c1, c2 = st.columns(2)
+        with c1:
+            dept = st.text_input("Department (optional)", value="", key="upload_dept")
+        with c2:
+            category = st.text_input("Category (optional)", value="", key="upload_category")
 
         metadata = {}
         if dept:
@@ -790,8 +1182,8 @@ def section_upload():
         if category:
             metadata["category"] = category
 
-        if st.button("Upload", type="primary"):
-            with st.spinner(f"Uploading {uploaded.name}..."):
+        if st.button("Upload and process", type="primary"):
+            with st.spinner(f"Uploading {uploaded.name}…"):
                 try:
                     files = {"file": (uploaded.name, uploaded.getvalue(), uploaded.type)}
                     data = {"metadata": _json.dumps(metadata)}
@@ -802,12 +1194,12 @@ def section_upload():
 
             if resp:
                 doc_id = resp["id"]
-                st.info(f"Uploaded. Processing {uploaded.name}...")
-                progress = st.progress(0.0)
+                st.info(f"Uploaded. Processing **{uploaded.name}**…")
+                progress = st.progress(0.0, text="Parsing and indexing…")
                 done = False
-                for i in range(60):
+                for i in range(90):
                     time.sleep(2)
-                    progress.progress(min((i + 1) / 60, 1.0))
+                    progress.progress(min((i + 1) / 90, 1.0), text=f"Processing… ({i*2}s)")
                     try:
                         doc = api("GET", f"/documents/{doc_id}")
                     except RuntimeError as e:
@@ -816,7 +1208,7 @@ def section_upload():
                         break
                     if doc["status"] == "ready":
                         progress.empty()
-                        st.success(f"Ready: **{uploaded.name}** \u2014 you can now ask questions about it.")
+                        st.success(f"Ready: **{uploaded.name}**")
                         done = True
                         break
                     if doc["status"] == "failed":
@@ -826,94 +1218,124 @@ def section_upload():
                         break
                 if not done:
                     progress.empty()
-                    st.warning("Still processing. Check the Documents tab shortly.")
-
-    render_nav_icons()
+                    st.warning("Still processing. Check the Documents tab in a moment.")
 
 
-# ------------------------------------------------------------------ documents
+# ============================================================================
+# DOCUMENTS PAGE
+# ============================================================================
+
+def _render_doc_card(d: dict):
+    status = d["status"].lower()
+    status_label = {
+        "ready": "Ready",
+        "processing": "Processing",
+        "uploaded": "Queued",
+        "failed": "Failed",
+    }.get(status, status.capitalize())
+
+    size_kb = d["size_bytes"] / 1024
+    size_str = f"{size_kb:.1f} KB" if size_kb < 1024 else f"{size_kb/1024:.1f} MB"
+
+    meta_items = [f'<span class="doc-meta-item">{size_str}</span>']
+    if d.get("doc_metadata"):
+        for k, v in d["doc_metadata"].items():
+            meta_items.append(f'<span class="doc-meta-item">{esc(k)}: {esc(str(v))}</span>')
+    created = (d.get("created_at") or "")[:10]
+    if created:
+        meta_items.append(f'<span class="doc-meta-item">{created}</span>')
+
+    error_html = ""
+    if d.get("failure_reason"):
+        error_html = f'<div class="doc-error">{esc(d["failure_reason"])}</div>'
+
+    card = (
+        '<div class="doc-card">'
+        '<div class="doc-head">'
+        f'<div class="doc-name">{esc(d["filename"])}</div>'
+        f'<span class="pill pill-{status}">'
+        f'<span class="pill-dot"></span>{status_label}</span>'
+        '</div>'
+        f'<div class="doc-meta">{"".join(meta_items)}</div>'
+        f'{error_html}'
+        '</div>'
+    )
+    st.markdown(card, unsafe_allow_html=True)
+
 
 def section_documents():
-    render_page_header("Documents in the knowledge base")
+    render_page_header("Documents")
 
     try:
         docs = api("GET", "/documents")
     except RuntimeError as e:
         st.error(f"Could not load documents: {e}")
-        render_nav_icons()
         return
 
     if not docs:
-        empty_html = (
-            '<div class="empty-state">'
-            '<div class="empty-state-title">No documents yet</div>'
-            '<div class="empty-state-sub">Upload one from the Upload tab to get started.</div>'
+        hero = (
+            '<div class="hero">'
+            '<div class="hero-title">No documents yet.</div>'
+            '<div class="hero-sub">Upload a PDF, DOCX, TXT, or Markdown file '
+            'from the Upload tab and it will appear here.</div>'
             '</div>'
         )
-        st.markdown(empty_html, unsafe_allow_html=True)
-        render_nav_icons()
+        st.markdown(hero, unsafe_allow_html=True)
         return
 
     st.caption(f"{len(docs)} document{'s' if len(docs) != 1 else ''}")
     for d in sorted(docs, key=lambda x: x.get("created_at", ""), reverse=True):
-        status_key = d["status"].lower()
-        cols = st.columns([6, 2, 2])
-        with cols[0]:
-            st.markdown(f"**{esc(d['filename'])}**")
-            if d.get("doc_metadata"):
-                st.caption(", ".join(f"{k}: {v}" for k, v in d["doc_metadata"].items()))
-        with cols[1]:
-            st.caption(f"{d['size_bytes']:,} bytes")
-        with cols[2]:
-            st.markdown(
-                f'<span class="status-badge status-{status_key}">'
-                f'<span class="status-dot"></span>{esc(d["status"])}</span>',
-                unsafe_allow_html=True,
-            )
-        if d.get("failure_reason"):
-            st.caption(f"Error: {d['failure_reason']}")
-        st.divider()
-
-    render_nav_icons()
+        _render_doc_card(d)
 
 
-# ------------------------------------------------------------------ settings
+# ============================================================================
+# SETTINGS PAGE
+# ============================================================================
 
 def section_settings():
     render_page_header("Settings")
 
-    token = st.text_input("API bearer token", value=st.session_state.api_token, type="password")
-    if token != st.session_state.api_token:
-        st.session_state.api_token = token
-        st.rerun()
-
+    st.markdown('<div class="side-label" style="margin-left:0">Pipeline</div>', unsafe_allow_html=True)
     pipeline = st.radio(
         "Pipeline",
         options=["improved", "baseline"],
         index=0 if st.session_state.pipeline == "improved" else 1,
         captions=[
-            "Hybrid retrieval + reranking + multi-query + compression (slower, higher quality)",
-            "Vector search only (fast baseline for comparison)",
+            "Hybrid retrieval + reranking + multi-query + compression — slower, higher quality.",
+            "Vector search only — fast baseline for comparison.",
         ],
+        label_visibility="collapsed",
     )
     st.session_state.pipeline = pipeline
 
-    st.divider()
-    st.caption(f"Backend: `{API_BASE}`")
+    st.markdown('<div class="side-label" style="margin-left:0; margin-top:2rem">Authentication</div>', unsafe_allow_html=True)
+    token = st.text_input(
+        "API bearer token",
+        value=st.session_state.api_token,
+        type="password",
+        label_visibility="collapsed",
+        placeholder="Bearer token",
+    )
+    if token != st.session_state.api_token:
+        st.session_state.api_token = token
+        st.rerun()
+
+    st.markdown('<div class="side-label" style="margin-left:0; margin-top:2rem">Backend</div>', unsafe_allow_html=True)
+    st.caption(f"`{API_BASE}`")
     if health_ok():
-        st.success("Backend reachable, database ok")
+        st.success("Reachable — database ok")
     else:
-        st.error("Backend unreachable or database down")
-
-    render_nav_icons()
+        st.error("Unreachable or database down")
 
 
-# ------------------------------------------------------------------ main
+# ============================================================================
+# MAIN
+# ============================================================================
 
 def main():
     st.set_page_config(
-        page_title="RAG Platform",
-        page_icon="\u25CF",
+        page_title="Knowledge Base",
+        page_icon="◆",
         layout="wide",
         initial_sidebar_state="expanded",
     )
@@ -921,6 +1343,21 @@ def main():
     init_session()
 
     render_sidebar()
+
+    # Sidebar navigation (kept simple and vertical)
+    with st.sidebar:
+        st.markdown('<div class="side-label" style="margin-top:1.5rem">Navigate</div>', unsafe_allow_html=True)
+        current_idx = NAV_OPTIONS.index(st.session_state.page)
+        choice = st.radio(
+            "nav",
+            NAV_OPTIONS,
+            index=current_idx,
+            label_visibility="collapsed",
+            key="side_nav",
+        )
+        if choice != st.session_state.page:
+            st.session_state.page = choice
+            st.rerun()
 
     page = st.session_state.page
     if page == "Chat":
