@@ -20,11 +20,14 @@ LLM") the README roadmap should call out explicitly once billing accuracy
 matters.
 """
 
+import logging
 import re
 from dataclasses import dataclass
 from enum import Enum
 
-from app.ingestion.parsers import ParsedUnit
+from app.ingestion.parsers import ParsedUnit, TableUnit
+
+logger = logging.getLogger("rag.ingestion.chunking")
 
 _WORD_RE = re.compile(r"\S+")
 
@@ -40,6 +43,7 @@ class RawChunk:
     page_number: int | None
     section_title: str | None
     token_count: int
+    modality: str = "text"  # "text" | "table" | "image"
 
 
 class ChunkingStrategy(str, Enum):
@@ -121,6 +125,39 @@ def recursive_chunk(units: list[ParsedUnit], chunk_size: int = 300, overlap: int
 
     return chunks
 
+def chunk_tables(units: list[TableUnit]) -> list[RawChunk]:
+    """One table = one chunk. Tables are NEVER split — splitting a table
+    destroys row/column associations (e.g. "Q4 2023 | $2,180" loses its
+    meaning when separated from "Return Rate | 9.1%").
+
+    The markdown goes into the chunk verbatim. LLMs read markdown tables
+    natively; CSV loses column alignment, HTML burns tokens.
+
+    If a table exceeds ~2000 tokens (rare, but possible for large
+    reference tables), we keep it as one chunk anyway and log a warning.
+    Splitting by row groups with header repetition is a future
+    enhancement, not a Phase 3 concern.
+    """
+    chunks: list[RawChunk] = []
+    for unit in units:
+        if not unit.markdown.strip():
+            continue
+        tokens = approx_token_count(unit.markdown)
+        if tokens > 2000:
+            logger.warning(
+                "large_table_chunk",
+                extra={"tokens": tokens, "section_title": unit.section_title},
+            )
+        chunks.append(
+            RawChunk(
+                text=unit.markdown,
+                page_number=unit.page_number,
+                section_title=unit.section_title,
+                token_count=tokens,
+                modality="table",
+            )
+        )
+    return chunks
 
 def chunk_document(
     units: list[ParsedUnit], strategy: ChunkingStrategy, chunk_size: int = 300, overlap: int = 50

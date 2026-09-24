@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 from app.core.exceptions import IngestionError
 from app.db.models import Chunk, Document, DocumentStatus
 from app.embeddings.provider import get_embedding_provider
-from app.ingestion.chunking import ChunkingStrategy, chunk_document
+from app.ingestion.chunking import ChunkingStrategy, chunk_document, chunk_tables
 from app.ingestion.cleaning import clean_text
 from app.ingestion.parsers import ParsedUnit, parse_document
 from app.observability.tracing import trace_stage
@@ -47,7 +47,9 @@ def run_ingestion(db: Session, document: Document, strategy: ChunkingStrategy = 
             ]
 
         with trace_stage("ingestion_chunk", document_id=doc_id):
-            raw_chunks = chunk_document(cleaned_units, strategy, DEFAULT_CHUNK_SIZE, DEFAULT_CHUNK_OVERLAP)
+            text_chunks = chunk_document(cleaned_units, strategy, DEFAULT_CHUNK_SIZE, DEFAULT_CHUNK_OVERLAP)
+            table_chunks = chunk_tables(parsed.table_units)
+            raw_chunks = text_chunks + table_chunks
             if not raw_chunks:
                 raise IngestionError(doc_id, "Chunking produced zero chunks.")
 
@@ -70,6 +72,7 @@ def run_ingestion(db: Session, document: Document, strategy: ChunkingStrategy = 
                     page_number=raw_chunk.page_number,
                     section_title=raw_chunk.section_title,
                     token_count=raw_chunk.token_count,
+                    modality=raw_chunk.modality,
                     chunk_metadata={"chunking_strategy": strategy.value},
                     embedding=vector,
                 )
