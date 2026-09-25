@@ -87,6 +87,13 @@ def _build_image_chunks(
         #   "This image depicts ..."         → "what does the image show?"
         #   "Alternate text for this image:" → "what is the alt text?"
         parts = []
+        # The section title is the primary retrieval signal for "what does
+        # the image in section N show?" style queries. Without it, the
+        # chunk's text is a description of pixels and shares no vocabulary
+        # with a question about the section — the embedding scores near
+        # zero against the query, and reranking pushes it out of top-k.
+        if pic.section_title:
+            parts.append(f'This image appears in the section titled "{pic.section_title}".')
         if pic.caption:
             parts.append(f"Alternate text for this image: {pic.caption}")
         if description:
