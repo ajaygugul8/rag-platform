@@ -1,20 +1,18 @@
-## `docs/TASKS.md`
-
-Save at `docs/TASKS.md`.
+Here's the complete `docs/TASKS.md`. Save at `docs/TASKS.md`.
 
 ```markdown
-# Task Tracker — Modern RAG Platform
+# Task Tracker - Modern RAG Platform
 
 **Legend:** ✅ done · ⚠️ done with caveats · 🔄 in progress · ⏳ not started
 
-**Last updated:** 2026-09-21
+**Last updated:** 2026-09-25
 
 ---
 
-## Phase 1 — Foundation ✅
+## Phase 1 - Foundation ✅
 
 - [x] Repo scaffold, `docker-compose.yml`, `.env.example`
-- [x] `config.py` — single source of env vars (only module reading `os.environ`)
+- [x] `config.py` - single source of env vars (only module reading `os.environ`)
 - [x] Postgres + pgvector with `init.sql`
 - [x] `POST /documents` with validation, auth, background ingestion
 - [x] `GET /documents`, `GET /documents/{id}`, `GET /health`
@@ -23,138 +21,171 @@ Save at `docs/TASKS.md`.
 
 ---
 
-## Phase 2 — Baseline RAG ✅
+## Phase 2 - Baseline RAG ✅
 
 - [x] PDF / DOCX / TXT / MD parsers (`ingestion/parsers.py`)
-- [x] Cleaning — normalize whitespace, preserve headings
+- [x] Cleaning - normalize whitespace, preserve headings
 - [x] Fixed + recursive chunking strategies
 - [x] Local embeddings (`bge-small-en-v1.5`, 384-dim)
 - [x] `chunks` table with generated `content_tsv`, HNSW index
 - [x] `vector_search()` with configurable top-k
-- [x] `naive_rag.answer_query()` — retrieve → prompt → generate
+- [x] `naive_rag.answer_query()` - retrieve → prompt → generate
 - [x] Grounded prompt with citation enforcement (`generation/prompt.py`)
 - [x] Unit + integration tests
 
 ---
 
-## Phase 3 — Retrieval Upgrades ✅
+## Phase 3 - Retrieval Upgrades ✅
 
-- [x] `keyword_store.py` — Postgres full-text (`ts_rank_cd`)
-- [x] `hybrid.py` — min-max normalized fusion, `alpha` configurable
-- [x] `metadata.py` — JSONB containment filter
-- [x] `reranker.py` — `bge-reranker-base` cross-encoder
-- [x] `improved_rag.py` — hybrid + rerank pipeline
+- [x] `keyword_store.py` - Postgres full-text (`ts_rank_cd`)
+- [x] `hybrid.py` - min-max normalized fusion, `alpha` configurable
+- [x] `metadata.py` - JSONB containment filter
+- [x] `reranker.py` - `bge-reranker-base` cross-encoder
+- [x] `improved_rag.py` - hybrid + rerank pipeline
 - [x] `pipeline` query parameter to A/B compare baseline vs. improved
-- [x] **Verified end-to-end on real Docker** — multi-document, multi-format
-      retrieval; correct source routing; correct abstention; DOCX
-      section-title extraction; rerank ordering
+- [x] **Verified end-to-end on real Docker** - multi-document,
+      multi-format retrieval; correct source routing; correct
+      abstention; DOCX section-title extraction; rerank ordering
 
 ---
 
-## Phase 4 — Advanced RAG ✅
+## Phase 4 - Advanced RAG ✅
 
-- [x] `query_transform.py::rewrite_query()` — conversation-aware
-- [x] `query_transform.py::expand_queries()` — multi-query expansion
-- [x] `compression.py::compress_context()` — dedup + budget selection
+- [x] `query_transform.py::rewrite_query()` - conversation-aware
+- [x] `query_transform.py::expand_queries()` - multi-query expansion
+- [x] `compression.py::compress_context()` - dedup + budget selection
 - [x] `conversation/history.py` + `conversation_turns` table
 - [x] `session_id` on `POST /query`
 - [x] Response cache (`core/cache.py`), bypassed when `session_id` present
 - [x] **Verified:** rewriting (`resolved_query` correct on follow-ups)
 - [x] **Verified:** multi-query fires (`expand_queries` returns 4 variants)
 - [x] **Verified:** caching (stateless hits; session-scoped bypasses)
-- [x] **Verified:** abstention gate on raw cosine (0.6) — off-corpus
-      abstains, on-corpus answers
+- [x] **Verified:** abstention gate on raw cosine (0.6)
 - [x] **Fixed:** LLM-level abstention flag reconciliation
-- [x] **Fixed:** query rewrite over-eagerness (injected prior topics into
-      standalone questions); "return UNCHANGED" rule added
-- [x] **Fixed:** rewrite safety net — gate considers original question's
-      raw relevance alongside the resolved query
-- [ ] **Open:** dedup is a near-no-op (Jaccard@0.8 cannot catch
-      overlapping-window near-duplicates). Fix: containment metric +
-      length-ratio guard
+- [x] **Fixed:** query rewrite over-eagerness ("return UNCHANGED" rule added)
+- [x] **Fixed:** rewrite safety net - gate considers original question
+- [x] **Fixed:** dedup no-op (Jaccard → containment + length-ratio guard)
 
 ---
 
-## Phase 5 — Evaluation ✅
+## Phase 5 - Evaluation ✅
 
-- [x] Golden dataset (`eval/golden_dataset.json`) — 7 questions across
-      6 categories
-- [x] Sample corpus (`eval/sample_corpus/`) — 3 documents
-- [x] Harness (`eval/run_eval.py`) — runs both pipelines, computes metrics,
-      writes JSON + Markdown report
+- [x] Golden dataset (`eval/golden_dataset.json`) - **20 questions**
+      across 7 categories
+- [x] Sample corpus (`eval/sample_corpus/`) - 5 documents
+- [x] Harness (`eval/run_eval.py`) - runs both pipelines, computes
+      metrics, writes JSON + Markdown report
 - [x] Report regenerator (`eval/regenerate_report.py`)
-- [x] **Ran end-to-end.** Results:
+- [x] **Ran end-to-end** with 20-question golden set. Latest results:
 
   | Metric | baseline | improved | Δ |
   |---|---:|---:|---:|
-  | hit_rate | 0.50 | **0.83** | +0.33 |
-  | MRR | 0.50 | **0.83** | +0.33 |
-  | keyword_coverage | 0.50 | **0.75** | +0.25 |
-  | abstention_accuracy | 0.57 | **0.86** | +0.29 |
-  | avg latency | **65 ms** | 1050 ms | +985 ms |
+  | hit_rate | 0.83 | **0.94** | +0.11 |
+  | MRR | 0.81 | **0.94** | +0.13 |
+  | keyword_coverage | 0.81 | **0.89** | +0.08 |
+  | abstention_accuracy | 0.85 | **0.95** | +0.10 |
+  | avg latency | **71 ms** | 1698 ms | +1627 ms |
 
-- [x] Corpus scoping via `document_ids` — user uploads cannot contaminate
+- [x] Corpus scoping via `document_ids` - user uploads cannot contaminate
       the benchmark
-- [ ] **Open:** expand golden set to ~18 questions for tighter confidence
-      intervals (7 questions → ±10 pp noise)
-- [ ] **Open:** fix the markdown encoding bug in `run_eval.py` (first run
-      produced a 0-byte `.md`; `regenerate_report.py` works around it)
+- [x] Markdown encoding fix applied (0-byte `.md` bug resolved)
 
 ---
 
-## Phase 6 — Production Hardening ⚠️
+## Phase 6 - Production Hardening ⚠️
 
 ### Done
-- [x] **Alembic migrations** — stamped existing schema to `0001`; forward
-      changes go through `revision --autogenerate`
-- [x] **`POST /feedback`** endpoint (was table-only, no route)
+- [x] **Alembic migrations** - revisions `0001` (baseline) and `0002`
+      (modality + parent_chunk_id)
+- [x] **`POST /feedback`** endpoint
 - [x] **Gemini multi-key rotation** with per-key cooldown on 429
-- [x] **Ollama fallback** (`qwen3:8b`) for rate-limited / offline operation
+- [x] **Ollama fallback** for rate-limited / offline operation
 - [x] **HF offline env vars** (`HF_HUB_OFFLINE=1`, `TRANSFORMERS_OFFLINE=1`)
-      — eliminates ~10s/query wasted on unreachable huggingface.co DNS
-- [x] **Streamlit frontend** — upload, chat, citations, feedback buttons
+- [x] **Per-stage tracing** - every orchestrator stage wrapped in
+      `trace_stage`
+- [x] **Token usage logging** - `llm_usage` events with prompt/completion/total
+- [x] **Retrieval result logging** - `retrieval_results` with candidate counts
+      and score range
+- [x] **HTTPBearer security scheme** - `/docs` Authorize button works
+- [x] **Streamlit frontend** - upload, chat, citations, feedback
 
 ### Deferred (documented as out-of-scope for the demo)
-- [ ] Redis cache — `core/cache.py` is in-process, not thread-safe, breaks
-      with `--workers > 1`
-- [ ] Task queue (Celery/RQ/arq) — `BackgroundTasks` is single-worker
-- [ ] Real auth (per-user tokens, per-document ACLs) — one shared token
-      by design
-- [ ] Per-stage tracing — `tracing.py` wraps only the whole query
-      pipeline, not individual retrieval/rerank/generation stages
-- [ ] Load testing — no concurrent-user benchmark has been run
-- [ ] 73s latency anomaly — traced to Gemini free-tier 503 retries; the
-      HF offline fix reduces the tail, but free-tier variance (3–12s per
-      query) is inherent
+- [ ] Redis cache - replace in-process `core/cache.py` before `--workers > 1`
+- [ ] Task queue (Celery/RQ/arq) - replace `BackgroundTasks` for parallel ingestion
+- [ ] Real auth (per-user tokens, per-document ACLs) - one shared token by design
+- [ ] Load testing - no concurrent-user benchmark has been run
 
 ---
 
-## Phase 7 — Demo Packaging ⚠️
+## Phase 7 - Demo Packaging + Multimodal ✅
 
-- [x] **README.md** — setup, config, usage, architecture, limitations,
-      troubleshooting
-- [x] **Streamlit frontend** — spec's "simple web UI" requirement
-- [x] **`docs/`** — PRD, ARCHITECTURE, RULES, DESIGN, TASKS, MEMORY
-- [ ] **Architecture diagram** as a standalone artifact (currently ASCII
-      in `ARCHITECTURE.md`)
-- [ ] **Demo scenario scripts** — automate the 7 PRD §11 scenarios as a
-      runnable script with pass/fail summary
-- [ ] **Optional:** deploy to a hosted environment (Oracle Cloud free
-      tier is the only one with enough RAM for local models)
+### Multimodal ingestion
+- [x] **Docling 2.14** for PDF/DOCX parsing (replaces pypdf/python-docx)
+- [x] **Tables** serialized as markdown, one chunk per table, never split
+- [x] **Images** described by `moondream:1.8b` via Ollama
+- [x] **DOCX alt text** extracted via `wp:docPr` XML walk
+- [x] `chunks.modality` column (`text` / `table` / `image`)
+- [x] `chunks.parent_chunk_id` column (plumbing for future parent/child)
+- [x] `_merge_text_units()` - consecutive text units merged by section
+
+### Retrieval fixes for modality gap
+- [x] Modality boost in `hybrid_search` (×2.5 for image chunks on image queries)
+- [x] Modality guarantee after rerank (splice best image candidate back)
+- [x] Modality-aware gate relaxation (0.6 → 0.35 for image queries)
+
+### Generation fixes
+- [x] Prompt rule 5 - alt text authoritative over vision descriptions
+
+### Frontend
+- [x] Streamlit app rewritten with light theme + amber accent
+- [x] Multi-stage progress indicator (background thread, thread-safe)
+- [x] Navigation moved to top of sidebar
+- [x] DeepSeek-style chat input
+- [x] Fixed `st.session_state` thread-safety bug
+- [x] Fixed `st.columns([1, 0])` crash
+- [x] Removed fake "Copy" button
+- [x] Fixed uppercase labels → sentence case
+
+### Documentation
+- [x] `README.md` - setup, config, usage, architecture, limitations
+- [x] `HLD.md` - architecture, decisions, phase status
+- [x] `LLD.md` - module detail, schemas, API contracts
+- [x] `docs/ARCHITECTURE.md` - deeper module layout
+- [x] `docs/DESIGN.md` - why every choice was made
+- [x] `docs/MEMORY.md` - war stories, gotchas
+- [x] `docs/RULES.md` - invariants and landmines
+- [x] `docs/PRD.md` - this document set
+- [x] `docs/TASKS.md` - this file
+
+---
+
+## Phase 8 - Post-Demo ⏳
+
+- [ ] **Fix Word table extraction edge case** - some Word tables are
+      skipped entirely. Cause identified by owner; fix pending.
+      Location: `ingestion/parsers.py`, Docling `TableItem` detection.
+- [ ] **Decide on image display** - inline `<img>` render vs. link to
+      source. If inline: add an authenticated image-serving route,
+      include URL or base64 in query response for image citations.
+- [ ] **Test concurrent users** - 10 parallel queries via locust or
+      ThreadPoolExecutor. Watch for cache corruption and ingestion
+      blocking.
+- [ ] **Write `docs/WALKTHROUGH.md`** - single short "start here" doc
+      for a new engineer's first hour.
+- [ ] **Optional:** Redis cache, task queue, per-user auth.
 
 ---
 
 ## Known Bugs (prioritized)
 
-| # | Severity | Bug | Fix |
-|---|---|---|---|
-| 1 | Medium | Dedup no-op (Jaccard@0.8) | Containment metric + ratio guard |
-| 2 | Medium | `run_eval.py` markdown encoding bug (0-byte `.md`) | Add `encoding="utf-8"` to `write_text` |
-| 3 | Low | Heading-only chunks cited (e.g. `"Employee Handbook"`) | Min-token filter at ingestion |
-| 4 | Low | Reranker top-1 can be the wrong chunk when query repeats entity name | Document; LLM cites correctly |
-| 5 | Low | Duplicate `FAILED` document rows possible from seed runs | `DELETE FROM documents WHERE status='FAILED'` |
-| 6 | Low | `test_phase4_advanced.py` imports via orchestrator (drags in DB) | Import pure functions directly |
-| 7 | Low | Duplicated relevance constant in both orchestrators | Move to `config.py` as one shared value |
+| # | Severity | Bug | Location | Status |
+|---|---|---|---|---|
+| 1 | Medium | Word table extraction skips some tables | `ingestion/parsers.py` | Open - cause known |
+| 2 | Medium | Image display not rendered in citations | `frontend/app.py` `render_sources()` | Open - decision pending |
+| 3 | Low | Duplicate documents possible (no filename uniqueness) | Schema | Documented, manual cleanup |
+| 4 | Low | PDF images not always detected as PictureItems | Docling behavior | Documented limitation |
+| 5 | Low | Vision descriptions occasionally mislabel subjects | moondream:1.8b | Mitigated by prompt rule 5 |
+| 6 | Low | Multi-query doesn't bridge domain vocabulary | Design | Documented limitation |
 
 ---
 
@@ -166,24 +197,40 @@ A feature is done when:
 2. Unit tests cover pure logic; integration covers the flow
 3. `ARCHITECTURE.md` / `DESIGN.md` updated if interfaces changed
 4. `MEMORY.md` updated with any new gotcha or decision
-5. Verified against a running Docker deployment — not just pytest
+5. Verified against a running Docker deployment - not just pytest
 
 ---
 
-## Next Session — Start Here
+## Test Suite Status
 
-1. Fix the `run_eval.py` markdown encoding bug (10 min)
-2. Expand `golden_dataset.json` to ~18 questions (20 min)
-3. Fix dedup — containment metric + length-ratio guard (30 min)
-4. Re-run eval, confirm improved numbers hold or improve (5 min)
-5. Build the demo scenario script (1 hr)
-6. Optional: Oracle Cloud deployment (2–4 hrs, ARM capacity permitting)
+```
+docker compose exec backend pytest -v
+# 23 passed
+```
+
+**Coverage:**
+- `test_documents.py` - upload validation, auth, CRUD, health (5 tests)
+- `test_chunking.py` - fixed/recursive chunking (3 tests)
+- `test_hybrid.py` - score normalization, metadata filter (5 tests)
+- `test_phase3_hybrid_retrieval.py` - baseline vs. improved (2 tests)
+- `test_phase3b_tables.py` - table chunks retrievable (1 test)
+- `test_phase4_advanced.py` - dedup, budget, rewrite (5 tests)
+- `test_query_e2e.py` - full upload → ingest → query flow (2 tests)
+
+**Not covered by automated tests:**
+- Reranker correctness under pytest (verified manually)
+- Multi-query expansion
+- Cache under concurrent requests
+- Eval harness itself
+- Tracing output correctness
+- Vision description quality
+- Concurrent-user behavior
 
 ---
 
-## Spec Acceptance Criteria — Status
+## Spec Acceptance Criteria
 
-From the original requirements PDF, §10:
+From the original requirements PDF §10:
 
 - [x] A new document can be uploaded, processed, and queried without
       manual database intervention
@@ -199,10 +246,34 @@ From the original requirements PDF, §10:
 - [x] The complete demo can be started from documented instructions on a
       clean development environment
 
-**All seven acceptance criteria met.** The project is functionally
-complete.
+**All seven acceptance criteria met.**
+
+---
+
+## Next Session - Start Here
+
+1. Verify the corpus is clean (no PII, no duplicates)
+2. Confirm tests still pass:
+   ```bash
+   docker compose exec backend pytest -v
+   ```
+3. Confirm the eval still reproduces:
+   ```bash
+   python eval/run_eval.py
+   ```
+4. Pick from Phase 8 tasks in priority order
+5. Do not touch: `device="cpu"` kwargs, rerank threshold filter
+   (there shouldn't be one), raw-cosine abstention gate, prompt rule 5,
+   `wp:docPr` alt-text extractor
 ```
 
 ---
 
-**4 of 6 delivered.** Reply **"next"** for `MEMORY.md`.
+Save at `docs/TASKS.md`, then commit:
+
+```bash
+cd /c/Users/ADMIN/Desktop/rag-platform
+git add docs/TASKS.md docs/PRD.md docs/DESIGN.md docs/MEMORY.md README.md
+git commit -m "Docs: add PRD, TASKS, DESIGN; refresh MEMORY and README"
+git push
+```

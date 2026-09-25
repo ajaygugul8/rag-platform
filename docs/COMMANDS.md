@@ -1,344 +1,686 @@
-# Git Bash Command Reference — Modern RAG Platform
+Here's the complete `docs/COMMANDS.md`. Save it at `docs/COMMANDS.md`.
 
-Every command you need, in Git Bash syntax, with an inline comment explaining what each one does. This replaces the PowerShell version you had.
+```markdown
+# Commands Reference - Modern RAG Platform
+
+Every command used to set up, run, test, debug, and evaluate this
+project. Organized by task. Each command has a one-line explanation of
+what it does and why you'd run it.
+
+**Shell note:** This project was developed on Windows. Most commands
+below are written for **Git Bash** (the shell that works best for this
+project on Windows). Where PowerShell differs, the difference is noted.
+
+**Path note:** Git Bash uses `/c/Users/ADMIN/...` for Windows paths.
+PowerShell uses `C:\Users\ADMIN\...`. WSL uses `/mnt/c/Users/ADMIN/...`.
 
 ---
 
-## 1. First-Time Setup
+## 1. Opening the Right Shell
+
+Before running anything, you need to be in the right shell, in the right
+directory.
+
+### Launch Git Bash from PowerShell
+
+```powershell
+& "C:\Program Files\Git\git-bash.exe" --cd="C:\Users\ADMIN\Desktop\rag-platform"
+```
+
+Opens a new Git Bash window already in the project directory. Use this
+when you're in PowerShell and want to switch to Git Bash.
+
+### Confirm you're in the right shell and directory
 
 ```bash
-# Move into the project root. ALMOST every command below assumes you're here.
-# In Git Bash, C:\Users\ADMIN becomes /c/Users/ADMIN (forward slashes, /c/ prefix).
-cd /c/Users/ADMIN/Desktop/rag-platform
-
-# Confirm you're in the right place — should print the path above.
 pwd
+```
 
-# List everything in the current directory — sanity check before starting work.
-ls -la
+Expected: `/c/Users/ADMIN/Desktop/rag-platform`
 
-# Create your local .env from the template.
-# Edit it afterward to set GEMINI_API_KEYS and POSTGRES_PASSWORD.
+If it's not, `cd` to it:
+
+```bash
+cd /c/Users/ADMIN/Desktop/rag-platform
+```
+
+### Which shell am I in?
+
+- **Git Bash:** prompt contains `MINGW64`, paths use `/c/`
+- **PowerShell:** prompt starts with `PS`, paths use `C:\`
+- **WSL:** prompt is `user@host:/mnt/c/...`, git doesn't work across filesystem boundary by default
+
+---
+
+## 2. First-Time Setup
+
+### Copy the env template
+
+```bash
 cp .env.example .env
+```
 
-# Verify the .env exists and has content.
+Creates your local `.env` from the template. Then edit it and set at
+least `GEMINI_API_KEYS` (comma-separated, no spaces) and
+`POSTGRES_PASSWORD`.
+
+### Verify `.env` contents
+
+```bash
 cat .env
+```
 
-# Build the backend Docker image from backend/Dockerfile + requirements.txt.
-# MUST be run after any change to backend source code — `up` alone does not
-# rebuild, it just starts/recreates containers from the existing image.
+Shows the file. Useful to confirm your changes took effect and to spot
+formatting mistakes.
+
+### Build the backend Docker image
+
+```bash
 docker compose build backend
+```
 
-# Same as above but ignores Docker's layer cache entirely.
-# Use when a code change doesn't seem to take effect after a normal build.
-# Slower (full reinstall) but guarantees nothing stale is reused.
+Builds the backend image from `backend/Dockerfile` and
+`backend/requirements.txt`. **Must be run after any change to backend
+source code.** `docker compose up` alone does NOT rebuild — it just
+starts containers from whatever image already exists.
+
+First build downloads PyTorch, Docling, sentence-transformers (~2 GB)
+and takes 5–10 minutes.
+
+### Build ignoring cache
+
+```bash
 docker compose build --no-cache backend
+```
 
-# Start all containers (Postgres + backend) detached (-d = background).
-# Does NOT rebuild images — pair with `build` first if you changed code.
+Slower full reinstall. Use when a code change doesn't seem to take effect
+after a normal build.
+
+### Start everything
+
+```bash
 docker compose up -d
+```
 
-# Build (if needed) and start, combined.
+Starts Postgres + backend + frontend in the background (`-d` = detached).
+Also picks up `.env` changes (unlike `restart`).
+
+### Build + start combined
+
+```bash
 docker compose up --build -d
 ```
 
+One command that builds only if needed and starts. Convenient for
+day-to-day work.
+
 ---
 
-## 2. Daily Docker Operations
+## 3. Daily Operations
+
+### Check what's running
 
 ```bash
-# List all containers with their status. Look for "healthy" next to both
-# rag_postgres and rag_backend before assuming the stack is ready.
 docker compose ps
+```
 
-# Show the last 50 log lines from the backend container.
-# First thing to check whenever something behaves unexpectedly.
+Lists all containers and their status. Look for `healthy` next to both
+`rag_postgres` and `rag_backend`.
+
+### Show last 50 log lines
+
+```bash
 docker compose logs backend --tail=50
+```
 
-# Follow backend logs live as new requests come in.
-# Ctrl+C stops following (does NOT stop the container).
+First thing to check whenever something behaves unexpectedly. Also
+useful: `--tail=200` or `--tail=500` for more history.
+
+### Follow logs live
+
+```bash
 docker compose logs backend -f
+```
 
-# Stop and remove containers. Data volumes are PRESERVED.
-# Safe to run anytime — DB data, uploads, and HF model cache survive.
-docker compose down
+Streams new log lines as they arrive. `Ctrl+C` stops following without
+stopping the container.
 
-# Stop and remove containers AND delete all data volumes.
-# Wipes DB + uploaded files + HF model cache. Next start re-downloads models.
-# Only use when you genuinely want a clean slate.
-docker compose down -v
+### Filter logs by pattern
 
-# Restart a single container without removing it (keeps volumes, keeps image).
-# Does NOT pick up .env changes — use `up -d` for that.
+```bash
+docker compose logs backend --tail=200 | grep "query_answered"
+docker compose logs backend --tail=200 | grep -E "429|rate_limit|retry"
+docker compose logs backend --tail=200 | grep "image_boost"
+docker compose logs backend --tail=200 | grep "stage_completed"
+```
+
+Grep is your best tool for finding specific events in JSON log output.
+Common patterns to search for: `error`, `exception`, `429`, `retry`,
+`stage_started`, `stage_completed`, `llm_usage`, `retrieval_results`,
+`image_boost`, `primary_llm_failed_falling_back_to_ollama`.
+
+### Restart a single service
+
+```bash
 docker compose restart backend
+```
 
-# Show container resource usage (CPU, memory) — useful for debugging slowness.
+Restarts the process without removing the container. Does NOT pick up
+`.env` changes — use `docker compose up -d` for that.
+
+### Stop everything
+
+```bash
+docker compose down
+```
+
+Stops and removes containers. **Data volumes are preserved** — Postgres
+data, uploaded files, and model cache all survive. Safe to run anytime.
+
+### Stop and wipe all data
+
+```bash
+docker compose down -v
+```
+
+**Wipes the Postgres volume AND the model cache.** Next start
+re-downloads all models (~2 GB). Only use when you genuinely want a
+clean slate, e.g. to fix schema drift on a disposable dev database.
+
+### Container resource usage
+
+```bash
 docker stats --no-stream
 ```
 
+Shows CPU and memory per container. Useful for debugging slowness or
+confirming a service isn't resource-starved.
+
 ---
 
-## 3. Running Commands Inside the Container
+## 4. Running Commands Inside the Container
+
+### General pattern
 
 ```bash
-# Run any command inside the ALREADY-RUNNING backend container.
-# Note: no `-it` needed for non-interactive commands.
 docker compose exec backend <command>
+```
 
-# Confirm which Python classes actually exist inside the RUNNING container.
-# Best command for catching "I edited the file but never rebuilt" mistakes.
+Runs any command inside the already-running backend container. This is
+the canonical way to verify code state, run tests, apply migrations, or
+inspect internals.
+
+### Confirm which code is actually running
+
+```bash
 docker compose exec backend grep -n "^class " /app/app/generation/providers.py
+```
 
-# Print a live config value from inside the container.
-# Confirms a .env change actually took effect.
+Shows which Python classes exist inside the running container right now.
+**Best command for catching "I edited the file but the container never
+got rebuilt" mistakes.**
+
+### Print a config value from inside the container
+
+```bash
 docker compose exec backend python -c "from app.config import settings; print(settings.enable_multi_query)"
+docker compose exec backend python -c "from app.config import settings; print(settings.llm_provider)"
+docker compose exec backend python -c "from app.config import settings; print(settings.ollama_vision_model)"
+```
 
-# Quick syntax/import sanity check for one file — fails fast with a traceback
-# if there's a Python error, before you waste time on a full query.
+Confirms an `.env` change actually took effect. Faster than inspecting
+logs.
+
+### Syntax check without running
+
+```bash
 docker compose exec backend python -c "import app.generation.providers; print('imports fine')"
-
-# Check what environment variables are actually set in the container.
-docker compose exec backend printenv | grep -i "gemini\|ollama\|database"
+docker compose exec backend python -c "from app.orchestrator import improved_rag; print('ok')"
 ```
+
+Fails fast with a traceback if there's a Python error. Run this before
+running a full query test — saves time when you've just edited a file.
+
+### Print environment variables
+
+```bash
+docker compose exec backend printenv | grep -E "GEMINI|OLLAMA|HF_"
+docker compose exec backend printenv HF_HUB_OFFLINE
+docker compose exec backend printenv LLM_PROVIDER
+docker compose exec backend printenv OLLAMA_VISION_MODEL
+```
+
+Shows actual env vars from inside the container. Confirms `.env` values
+made it through Docker Compose.
 
 ---
 
-## 4. Database Migrations (Alembic)
+## 5. Database Migrations (Alembic)
+
+### Check current migration state
 
 ```bash
-# Show which migration revision the DB currently thinks it's at.
-# Expect "0002 (head)" after the multimodal upgrade.
 docker compose exec backend alembic current
+```
 
-# Show migration history.
+Expected: `0002 (head)`. Shows which revision the database thinks it's at.
+
+### Show migration history
+
+```bash
 docker compose exec backend alembic history
+```
 
-# Mark an EXISTING database as already being at the latest revision,
-# WITHOUT running any of the migration's SQL.
-# Use this ONLY when introducing Alembic to a DB that already has tables.
+Lists all revisions. Useful when you're not sure what's been applied.
+
+### Mark an existing database as up to date
+
+```bash
 docker compose exec backend alembic stamp head
+```
 
-# Execute all pending migrations. Use on a GENUINELY FRESH database only.
+Marks the DB as already at the latest revision **without running any of
+the migration SQL**. Use exactly once when introducing Alembic to a DB
+that already has all the tables (created previously via `create_all()`).
+Running `upgrade head` instead on such a DB would fail — it would try to
+`CREATE TABLE` on tables that already exist.
+
+### Apply pending migrations
+
+```bash
 docker compose exec backend alembic upgrade head
-
-# Generate a new migration by diffing models.py against the live DB.
-# ALWAYS review the generated file before applying it.
-docker compose exec backend alembic revision --autogenerate -m "description of change"
 ```
+
+Actually executes migrations. Use on a **genuinely fresh** database (new
+developer machine, CI, clean deployment). Never on the already-stamped
+dev database.
+
+### Generate a new migration
+
+```bash
+docker compose exec backend alembic revision --autogenerate -m "add column X"
+```
+
+Diffs your SQLAlchemy models against the live database schema and
+generates a migration file. **Always review the generated file in
+`backend/alembic/versions/` before applying.** Autogenerate is a helpful
+diff, not a guarantee of correctness.
+
+### Downgrade one revision
+
+```bash
+docker compose exec backend alembic downgrade -1
+```
+
+Reverts the most recent migration. Use with care — for a schema with
+data, downgrades often lose data.
 
 ---
 
-## 5. Backend Tests
+## 6. Database Queries (psql)
+
+### List tables
 
 ```bash
-# Tests need a real Postgres instance (pgvector has no faithful mock).
-# Start just the DB, not the full stack.
-docker compose up -d postgres
-
-# Install Python deps LOCALLY (not in Docker) so pytest can import app code.
-cd backend
-pip install -r requirements.txt
-
-# Run the full test suite with verbose per-test output.
-# Expected: 23 passed.
-pytest -v
-
-# Run just one test file (faster iteration on a specific area).
-pytest tests/test_phase4_advanced.py -v
-
-# Run one specific test function.
-pytest tests/test_phase4_advanced.py::test_deduplicate_removes_near_identical_chunks -v
-
-# Run tests and stop at the first failure.
-pytest -x
-
-# Run tests matching a keyword.
-pytest -k "table" -v
-
-# Go back to repo root when done.
-cd ..
+docker compose exec postgres psql -U postgres -d modern_rag -c "\dt"
 ```
+
+Expected: 5 tables (`alembic_version`, `chunks`, `conversation_turns`,
+`documents`, `feedback`).
+
+### Describe a table
+
+```bash
+docker compose exec postgres psql -U postgres -d modern_rag -c "\d chunks"
+```
+
+Shows columns, types, indexes. Useful for confirming a migration landed.
+
+### Count documents by status
+
+```bash
+docker compose exec postgres psql -U postgres -d modern_rag -c "SELECT status, COUNT(*) FROM documents GROUP BY status;"
+```
+
+### List all documents
+
+```bash
+docker compose exec postgres psql -U postgres -d modern_rag -P pager=off -c "SELECT filename, status, size_bytes FROM documents ORDER BY created_at DESC LIMIT 20;"
+```
+
+`-P pager=off` disables the interactive pager so output prints directly.
+Without it, tall output opens in `less` (press `q` to exit).
+
+### Count chunks by modality
+
+```bash
+docker compose exec postgres psql -U postgres -d modern_rag -P pager=off -c "
+SELECT c.modality, COUNT(*) AS chunks, AVG(c.token_count)::int AS avg_tokens
+FROM chunks c
+JOIN documents d ON d.id = c.document_id
+GROUP BY c.modality
+ORDER BY c.modality;
+"
+```
+
+Shows how many text/table/image chunks exist. Useful for confirming
+multimodal ingestion worked.
+
+### Inspect an image chunk's content
+
+```bash
+docker compose exec postgres psql -U postgres -d modern_rag -P pager=off -c "
+SELECT LEFT(content, 400), chunk_metadata->>'image_path'
+FROM chunks
+WHERE modality = 'image'
+LIMIT 3;
+"
+```
+
+### Find chunks containing a phrase
+
+```bash
+docker compose exec postgres psql -U postgres -d modern_rag -P pager=off -c "
+SELECT d.filename, LEFT(c.content, 120)
+FROM chunks c JOIN documents d ON d.id = c.document_id
+WHERE c.content ILIKE '%Web Access Symbol%';
+"
+```
+
+### Delete a specific document
+
+```bash
+docker compose exec postgres psql -U postgres -d modern_rag -c "DELETE FROM documents WHERE filename = 'sample3.docx';"
+```
+
+Cascade deletes its chunks. **Note:** the file on disk stays in
+`/app/data/uploads/` — clean separately if you care.
+
+### Delete by status
+
+```bash
+docker compose exec postgres psql -U postgres -d modern_rag -c "DELETE FROM documents WHERE status='FAILED';"
+```
+
+**Enum values are UPPERCASE in Postgres even though Python defines them
+lowercase.** Use `'FAILED'`, not `'failed'`.
+
+### Deduplicate documents (keep newest per filename)
+
+```bash
+docker compose exec postgres psql -U postgres -d modern_rag -P pager=off -c "
+WITH ranked AS (
+    SELECT id, filename,
+           ROW_NUMBER() OVER (PARTITION BY filename ORDER BY created_at DESC) AS rn
+    FROM documents
+)
+DELETE FROM documents WHERE id IN (SELECT id FROM ranked WHERE rn > 1);
+"
+```
+
+### Delete a personal/PII document
+
+```bash
+docker compose exec postgres psql -U postgres -d modern_rag -c "DELETE FROM documents WHERE filename = 'G Ajay_AccountStatement_28082026_135812.pdf';"
+```
+
+**Do this before any commit or demo if you accidentally uploaded
+something sensitive.**
 
 ---
 
-## 6. Evaluation Harness
+## 7. Testing
+
+### Run the full test suite (the canonical command)
 
 ```bash
-# Run the full evaluation: ingest sample corpus, run all golden questions
-# through BOTH pipelines, save JSON + Markdown report to eval/results/.
-# First run downloads models (~1.2 GB) and takes minutes.
+docker compose exec backend pytest -v
+```
+
+**Expected: 23 passed.** This is the ONLY way to run tests on Windows —
+host-side pytest fails with a DLL block (see §11).
+
+### Run one test file
+
+```bash
+docker compose exec backend pytest tests/test_phase4_advanced.py -v
+```
+
+### Run one specific test
+
+```bash
+docker compose exec backend pytest tests/test_phase4_advanced.py::test_deduplicate_removes_near_identical_chunks -v
+```
+
+### Run tests matching a keyword
+
+```bash
+docker compose exec backend pytest -k "table" -v
+```
+
+### Stop at first failure
+
+```bash
+docker compose exec backend pytest -x
+```
+
+### Run tests directly inside the container shell
+
+```bash
+docker compose exec backend bash
+cd /app && pytest -v
+exit
+```
+
+Drops you into a shell inside the container. Useful for interactive
+debugging with `pytest` and Python together.
+
+**Do NOT run `pytest` on the Windows host.** It fails on the
+`_argkmin.pyd` DLL block. See §11.
+
+---
+
+## 8. Evaluation Harness
+
+### Run the full evaluation
+
+```bash
 python eval/run_eval.py
+```
 
-# Regenerate just the Markdown report from the most recent JSON results,
-# without re-running ingestion or the pipelines.
+Ingests 4–5 sample documents, runs every question in the golden dataset
+(20 questions) through both pipelines, saves JSON and Markdown reports
+to `eval/results/`.
+
+First run downloads models (~1.2 GB) and takes ~5 minutes. Later runs are
+faster.
+
+**Expected summary:**
+```
+baseline: hit_rate=0.83 ...
+improved: hit_rate=0.94 ...
+```
+
+### Run with real LLM (not fake) for answer-quality scoring
+
+```bash
+python eval/run_eval.py --real-llm
+```
+
+Slower, uses the configured LLM provider for generation. Use when you
+want answer-quality metrics in addition to retrieval metrics.
+
+### Run with data cleanup disabled
+
+```bash
+python eval/run_eval.py --keep-data
+```
+
+Keeps the eval corpus documents in the DB after the run. Useful for
+inspecting what the harness ingested. **Causes accumulation across runs
+— clean up manually after.**
+
+### Regenerate the Markdown report only
+
+```bash
 python eval/regenerate_report.py
+```
 
-# Find the most recent eval report file (avoids typing the timestamp name).
-ls -t eval/results/*.json | head -1
+Rebuilds the `.md` report from the most recent JSON results, without
+re-running ingestion or the pipelines. Use when the JSON saved but the
+Markdown write failed.
 
-# View the most recent report contents.
+### Find the most recent report
+
+```bash
+ls -t eval/results/*.md | head -1
 cat $(ls -t eval/results/*.md | head -1)
+```
 
-# List all saved eval runs with sizes and timestamps.
+`ls -t` sorts by modification time (newest first). `head -1` takes the
+first. `cat` prints it.
+
+### List all saved eval runs
+
+```bash
 ls -lath eval/results/
 ```
 
 ---
 
-## 7. Frontend
+## 9. API Testing with curl
+
+Git Bash handles curl properly — no quoting hell. Every example below
+uses Git Bash syntax.
+
+### Health check
 
 ```bash
-# Install frontend's two dependencies (pure HTTP client — no DB or model libs).
-pip install streamlit requests
-
-# Launch the chat UI. Opens at http://localhost:8501.
-# Backend must already be running (docker compose up -d).
-streamlit run frontend/app.py
-
-# Or, if you run the frontend in Docker (from repo root):
-docker compose up -d frontend
+curl http://localhost:8000/health
 ```
 
----
+Expected: `{"status":"ok","app_env":"local","database":"ok"}`
 
-## 8. API Testing with `curl`
-
-**Git Bash handles `curl` properly** — unlike PowerShell, no quoting hell, no need for `-s` shenanigans. This is one of the few places Git Bash is objectively easier.
+### Upload a document
 
 ```bash
-# --- Health check ---
-curl http://localhost:8000/health
-# Expected: {"status":"ok","app_env":"local","database":"ok"}
-
-# --- Upload a document ---
-# curl determines the file type from the extension and sends the right
-# MIME type automatically. -F is "multipart form field".
 curl -X POST "http://localhost:8000/documents" \
   -H "Authorization: Bearer change-me-dev-token" \
   -F "file=@/c/Users/ADMIN/Desktop/rag-platform/_scratch/handbook.docx" \
   -F 'metadata={"department":"hr"}'
-# Expected: JSON with id, filename, status: "uploaded"
-# Note the single quotes around the metadata JSON — double quotes
-# would be eaten by the shell.
+```
 
-# --- Check a document's status (poll until "ready") ---
-# Replace <id> with the document_id from the upload response.
+`curl` determines MIME type from the file extension. Use `;type=` to
+override for ambiguous extensions.
+
+### Check document status (poll until ready)
+
+```bash
 curl "http://localhost:8000/documents/<id>" \
-  -H "Authorization: Bearer change-me-dev-token"
-# Expected: {"id":"...","status":"ready","failure_reason":null,...}
+  -H "Authorization: Bearer change-me-dev-token" \
+  | python -m json.tool
+```
 
-# --- List all documents ---
+Replace `<id>` with the document UUID from the upload response.
+
+### List all documents
+
+```bash
 curl http://localhost:8000/documents \
   -H "Authorization: Bearer change-me-dev-token" \
   | python -m json.tool
-# Pipe through `python -m json.tool` to pretty-print.
-# Without the pipe, you get compact one-line JSON.
+```
 
-# --- Query: baseline pipeline ---
-curl -X POST "http://localhost:8000/query" \
+`| python -m json.tool` pretty-prints the JSON. Drop it for compact output.
+
+### Query — baseline pipeline
+
+```bash
+curl -s -X POST "http://localhost:8000/query" \
   -H "Authorization: Bearer change-me-dev-token" \
   -H "Content-Type: application/json" \
   -d '{"question":"What is the leave policy?","pipeline":"baseline"}' \
   | python -m json.tool
+```
 
-# --- Query: improved pipeline with metadata filter ---
-curl -X POST "http://localhost:8000/query" \
+### Query — improved pipeline
+
+```bash
+curl -s -X POST "http://localhost:8000/query" \
+  -H "Authorization: Bearer change-me-dev-token" \
+  -H "Content-Type: application/json" \
+  -d '{"question":"How does the deployment pipeline work?","pipeline":"improved"}' \
+  | python -m json.tool
+```
+
+### Query — with metadata filter
+
+```bash
+curl -s -X POST "http://localhost:8000/query" \
   -H "Authorization: Bearer change-me-dev-token" \
   -H "Content-Type: application/json" \
   -d '{"question":"What is the leave policy?","pipeline":"improved","filters":{"department":"hr"}}' \
   | python -m json.tool
+```
 
-# --- Query: with session_id for follow-ups ---
-# Generate a session ID.
+### Query — with session_id for follow-ups
+
+```bash
 SESSION_ID=$(python -c "import uuid; print(uuid.uuid4())")
 echo "Session: $SESSION_ID"
 
-# Turn 1 — establishes history.
-curl -X POST "http://localhost:8000/query" \
+# Turn 1
+curl -s -X POST "http://localhost:8000/query" \
   -H "Authorization: Bearer change-me-dev-token" \
   -H "Content-Type: application/json" \
   -d "{\"question\":\"What is the leave policy?\",\"pipeline\":\"improved\",\"session_id\":\"$SESSION_ID\"}" \
   | python -m json.tool
-# Note: double-quoted JSON with escaped inner quotes so $SESSION_ID expands.
 
-# Turn 2 — follow-up. Same session ID. Tests rewriting.
-curl -X POST "http://localhost:8000/query" \
+# Turn 2 — same session ID
+curl -s -X POST "http://localhost:8000/query" \
   -H "Authorization: Bearer change-me-dev-token" \
   -H "Content-Type: application/json" \
   -d "{\"question\":\"What about sick leave?\",\"pipeline\":\"improved\",\"session_id\":\"$SESSION_ID\"}" \
   | python -m json.tool
+```
 
-# --- Submit feedback ---
+Note the escaped quotes inside the double-quoted JSON — needed so
+`$SESSION_ID` expands.
+
+### Submit feedback
+
+```bash
 curl -X POST "http://localhost:8000/feedback" \
   -H "Authorization: Bearer change-me-dev-token" \
   -H "Content-Type: application/json" \
-  -d '{"query":"the question asked","answer":"the answer given","is_useful":true}' \
+  -d '{"query":"the question","answer":"the answer","is_useful":true}' \
   | python -m json.tool
+```
 
-# --- See the error body (curl shows it by default; unlike Invoke-RestMethod) ---
-curl -X POST "http://localhost:8000/query" \
+### Measure query wall time
+
+```bash
+time curl -s -X POST "http://localhost:8000/query" \
   -H "Authorization: Bearer change-me-dev-token" \
   -H "Content-Type: application/json" \
-  -d '{"question":"","pipeline":"improved"}'
-# Empty question triggers validation error; response body shows details.
+  -d '{"question":"What is the leave policy?","pipeline":"baseline"}' \
+  > /dev/null
 ```
+
+`time` is a bash builtin. `>/dev/null` discards the response body so you
+only see timing.
 
 ---
 
-## 9. Direct Database Queries (psql)
+## 10. Debugging Diagnostics (Direct Pipeline Introspection)
 
-These run psql *inside* the Postgres container. All commands go through `docker compose exec postgres psql`.
+These bypass the API and call internal functions inside the container.
+Useful for isolating exactly which pipeline stage is responsible for an
+unexpected result.
 
-```bash
-# List all tables.
-docker compose exec postgres psql -U postgres -d modern_rag -c "\dt"
-
-# Describe the chunks table (columns, types, indexes).
-docker compose exec postgres psql -U postgres -d modern_rag -c "\d chunks"
-
-# Count documents by status.
-docker compose exec postgres psql -U postgres -d modern_rag -c "SELECT status, COUNT(*) FROM documents GROUP BY status;"
-
-# Count chunks per modality (text / table / image) per document.
-# -P pager=off disables the interactive pager so output prints directly.
-docker compose exec postgres psql -U postgres -d modern_rag -P pager=off -c "
-SELECT d.filename, c.modality, COUNT(*)
-FROM chunks c JOIN documents d ON d.id = c.document_id
-GROUP BY d.filename, c.modality
-ORDER BY d.filename, c.modality;
-"
-
-# Inspect one image chunk's content + metadata.
-docker compose exec postgres psql -U postgres -d modern_rag -P pager=off -c "
-SELECT LEFT(content, 300), chunk_metadata->>'image_path'
-FROM chunks
-WHERE modality = 'image'
-LIMIT 3;
-"
-
-# Search across all chunk content for a phrase.
-docker compose exec postgres psql -U postgres -d modern_rag -P pager=off -c "
-SELECT d.filename, LEFT(c.content, 100)
-FROM chunks c JOIN documents d ON d.id = c.document_id
-WHERE c.content ILIKE '%Web Access Symbol%';
-"
-
-# Delete a specific document (cascade deletes its chunks).
-docker compose exec postgres psql -U postgres -d modern_rag -c "DELETE FROM documents WHERE filename = 'sample3.docx';"
-
-# Note: enum values are UPPERCASE in the DB even though Python defines them
-# lowercase. Use 'FAILED', not 'failed', in raw SQL.
-docker compose exec postgres psql -U postgres -d modern_rag -c "DELETE FROM documents WHERE status='FAILED';"
-```
-
----
-
-## 10. Debugging Diagnostics (direct pipeline introspection)
-
-Bypass the API entirely — call internal functions inside the container to isolate which stage is responsible for an unexpected result.
+### Check raw vector similarity for a query
 
 ```bash
-# Raw vector similarity for a query, ignoring hybrid/rerank.
 docker compose exec backend python -c "
 from app.embeddings.provider import get_embedding_provider
 from app.retrieval.vector_store import vector_search
@@ -348,8 +690,14 @@ embedding = get_embedding_provider().embed_query('your question here')
 for r in vector_search(db, embedding, top_k=3):
     print(round(r.score, 4), '|', r.filename, '|', r.content[:60])
 "
+```
 
-# Hybrid scores AND reranker scores side by side.
+Ignores hybrid and rerank. Shows what the raw vector search sees.
+Useful when you suspect the reranker is overruling retrieval.
+
+### Check hybrid and rerank scores side by side
+
+```bash
 docker compose exec backend python -c "
 from app.embeddings.provider import get_embedding_provider
 from app.retrieval.hybrid import hybrid_search
@@ -364,266 +712,425 @@ for c in candidates: print(round(c.score, 4), '|', c.filename)
 print('--- reranked ---')
 for c in rerank(q, candidates, top_n=4): print(round(c.score, 4), '|', c.filename)
 "
+```
 
-# See exactly what multi-query expansion generates for a question.
+Shows the two score scales side by side. Useful for confirming that
+reranking is reordering (expected) vs. gating (bug).
+
+### See what multi-query expansion generates
+
+```bash
 docker compose exec backend python -c "
 from app.generation.providers import get_llm_client
 from app.retrieval.query_transform import expand_queries
-print(expand_queries(get_llm_client(), 'your question here'))
+print(expand_queries(get_llm_client(), 'PTO accrual amount'))
 "
-
-# Test the Gemini-to-Ollama fallback chain works.
-# Temporarily set GEMINI_API_KEYS to invalid values in .env, then:
-docker compose up -d backend
-curl -X POST "http://localhost:8000/query" \
-  -H "Authorization: Bearer change-me-dev-token" \
-  -H "Content-Type: application/json" \
-  -d '{"question":"What is the leave policy?","pipeline":"baseline"}'
-# Should still succeed (via Ollama).
-docker compose logs backend --tail=20
-# Should show "primary_llm_failed_falling_back_to_ollama" warnings.
-# Restore your real key(s) and `docker compose up -d backend` again.
 ```
 
----
+Shows the actual paraphrases the LLM produces. Useful for confirming
+multi-query fires and for understanding why jargon isn't bridged.
 
-## 11. Timing / Latency Checks
+### Test the Gemini → Ollama fallback
 
 ```bash
-# Measure a query's wall time in seconds.
-time curl -s -X POST "http://localhost:8000/query" \
+# Temporarily set GEMINI_API_KEYS to invalid values in .env, then:
+docker compose up -d backend
+
+# Run any query — it should still succeed via Ollama
+curl -s -X POST "http://localhost:8000/query" \
   -H "Authorization: Bearer change-me-dev-token" \
   -H "Content-Type: application/json" \
   -d '{"question":"What is the leave policy?","pipeline":"baseline"}' \
-  > /dev/null
-# `time` is a bash builtin — measures the whole curl call.
-# `>/dev/null` discards the response body so you only see timing.
+  | python -m json.tool
 
-# Measure a stateless query with `improved` pipeline.
-time curl -s -X POST "http://localhost:8000/query" \
-  -H "Authorization: Bearer change-me-dev-token" \
-  -H "Content-Type: application/json" \
-  -d '{"question":"What is the leave policy?","pipeline":"improved"}' \
-  > /dev/null
+# Check the logs for the fallback message
+docker compose logs backend --tail=20 | grep "falling_back"
 
-# Check p50/p95 latency from the logs (if you log duration_ms).
-docker compose logs backend --tail=200 | grep "query_answered" | tail -20
+# Restore real keys and restart
+docker compose up -d backend
+```
+
+### Inspect the raw chunks table for a document
+
+```bash
+docker compose exec backend python -c "
+from app.db.session import SessionLocal
+from app.db.models import Chunk, Document
+db = SessionLocal()
+doc = db.query(Document).filter(Document.filename == 'sample3.docx').order_by(Document.created_at.desc()).first()
+for c in db.query(Chunk).filter(Chunk.document_id == doc.id).order_by(Chunk.chunk_index):
+    print(f'{c.chunk_index:3d} | {c.modality:6s} | {c.token_count:4d} | {c.content[:60]!r}')
+db.close()
+"
+```
+
+Shows every chunk from a document with its modality and token count.
+Useful for spotting heading-only fragments or missing content.
+
+---
+
+## 11. Environment-Specific Fixes
+
+### Windows Application Control blocks host-side pytest
+
+If you see:
+
+```
+ImportError: DLL load failed while importing _argkmin:
+An Application Control policy has blocked this file.
+```
+
+**Do not try to fix it.** Run tests in Docker instead:
+
+```bash
+docker compose exec backend pytest -v
+```
+
+The container is Linux. No such policy. Same environment the app runs in.
+
+### Port 5432 collision (Windows)
+
+Symptom: `password authentication failed` or `type "vector" does not
+exist` when connecting to `localhost:5432`.
+
+Diagnose:
+
+```bash
+netstat -ano | findstr :5432
+Get-Process -Id <pid>
+```
+
+If you see two PIDs on the same port, a native Windows Postgres and
+Docker's forwarder are fighting. Fix: either stop the native Postgres,
+or confirm `.env`'s `DATABASE_URL` uses `localhost:5433` (the Docker
+port).
+
+### Docling `OfflineModeIsEnabled` on first parse
+
+Symptom: first PDF parse fails with `Cannot reach https://huggingface.co`.
+
+Cause: `HF_HUB_OFFLINE=1` blocks the model download.
+
+Fix: temporarily set `HF_HUB_OFFLINE=0` in `docker-compose.yml`, run one
+parse, then flip it back to `1`. Models cache in `hf_cache` and stay.
+
+```bash
+# Edit docker-compose.yml
+docker compose up -d backend
+docker compose exec backend python -c "
+from docling.document_converter import DocumentConverter
+import os
+target = os.path.join('/app/data/uploads', [f for f in os.listdir('/app/data/uploads') if f.endswith('.pdf')][0])
+DocumentConverter().convert(target)
+print('cached')
+"
+# Flip back to 1 in docker-compose.yml
+docker compose up -d backend
+```
+
+### Git Bash path mangling
+
+If a command like `docker compose exec backend python /app/../eval/run_eval.py`
+fails with a Windows path error, Git Bash is converting the Unix path.
+Fix: prefix with `MSYS_NO_PATHCONV=1`:
+
+```bash
+MSYS_NO_PATHCONV=1 docker compose exec backend python /app/some/path
+```
+
+Or just use paths that are valid **inside** the container (starting with
+`/app/`), never host paths.
+
+### Model download interrupted — meta tensor error
+
+Symptom: `NotImplementedError: Cannot copy out of meta tensor; no data!`
+
+Cause: model download interrupted (VPN, firewall, flaky connection).
+
+Fix: delete the cache and rebuild:
+
+```bash
+docker compose down -v
+docker compose up --build
 ```
 
 ---
 
-## 12. Log Analysis
+## 12. Git Operations
+
+### Check what's changed
 
 ```bash
-# Show the last 50 lines of backend logs.
-docker compose logs backend --tail=50
-
-# Search for specific error patterns.
-docker compose logs backend --tail=500 | grep -i "error\|exception\|traceback"
-
-# Find all rate-limit or retry events.
-docker compose logs backend --tail=500 | grep -E "429|rate_limit|retry|RESOURCE_EXHAUSTED"
-
-# Check whether the modality boost fired for a query.
-docker compose logs backend --tail=200 | grep "image_boost"
-
-# Show stage-timing events (per-stage tracing).
-docker compose logs backend --tail=500 | grep '"stage":"\(retrieve\|rerank\|generate\|compress\)"'
-
-# Watch logs live and filter to a specific pattern.
-docker compose logs -f backend | grep --line-buffered "query_answered"
-
-# Save logs to a file for later analysis.
-docker compose logs backend > backend-logs-$(date +%Y%m%d-%H%M%S).txt
-```
-
----
-
-## 13. Git Operations (as used in this project)
-
-```bash
-# Check current branch and see modified/untracked files.
 git status
+```
 
-# Show recent commit history (one-line format, with branch decorations).
+### Show recent commits
+
+```bash
 git log --oneline -10
+```
 
-# Stage specific files (preferred over `git add .` — less accidental).
-git add backend/app/ingestion/parsers.py backend/app/ingestion/pipeline.py
+### Stage specific files (preferred)
 
-# Stage everything not gitignored.
-git add .
+```bash
+git add HLD.md LLD.md frontend/app.py
+```
 
-# ⚠️ CRITICAL: review what's staged BEFORE committing.
-# Verify .env is NOT in the list.
+### Stage everything not gitignored
+
+```bash
+git add -A
+```
+
+### ⚠️ CRITICAL: verify `.env` is not staged
+
+```bash
+git check-ignore .env
+```
+
+Expected: prints `.env`. If nothing prints, `.env` is NOT ignored and
+WILL be committed. Stop and fix `.gitignore`.
+
+### Review what's about to be committed
+
+```bash
 git status
+```
 
-# Commit with a descriptive message.
-git commit -m "Phase 4: multimodal ingestion — text + tables + images"
+Read the file list carefully. `.env` must NOT appear.
 
-# Push to GitHub.
+### Unstage a file
+
+```bash
+git restore --staged .env
+```
+
+### Commit
+
+```bash
+git commit -m "Your message here"
+```
+
+### Push
+
+```bash
 git push
+```
 
-# Create a tag (like the safety net tag used before big changes).
+If it prompts for a password, paste your **Personal Access Token**
+(`ghp_...`), not your GitHub password. Generate one at
+https://github.com/settings/tokens — scope `repo`.
+
+### Pull before pushing
+
+```bash
+git pull --rebase
+git push
+```
+
+Use when `git push` is rejected because GitHub has commits you don't
+have locally.
+
+### Create a tag
+
+```bash
 git tag text-only-baseline
 git push origin text-only-baseline
+```
 
-# Restore a single file from an earlier commit or tag.
+Tags are bookmarks. Useful as safety nets before big changes.
+
+### Restore a file from a tag
+
+```bash
 git checkout text-only-baseline -- backend/app/ingestion/parsers.py
+```
 
-# Check that a sensitive file is actually gitignored.
-git check-ignore .env
-# Should output: .env
-# If it outputs nothing, .env is NOT ignored — stop and fix .gitignore.
+### Restore everything from a tag
+
+```bash
+git checkout text-only-baseline
 ```
 
 ---
 
-## 14. Environment Variable Inspection
+## 13. Ollama Commands
+
+### List locally downloaded models
 
 ```bash
-# Show what .env contains (careful: contains secrets).
-cat .env
-
-# Show only non-secret variable names (values hidden).
-grep -E "^[A-Z]" .env | cut -d= -f1
-
-# Confirm a specific variable from inside the backend container.
-docker compose exec backend printenv LLM_PROVIDER
-docker compose exec backend printenv OLLAMA_VISION_MODEL
-docker compose exec backend printenv HF_HUB_OFFLINE
-
-# Check all backend env vars that start with a prefix.
-docker compose exec backend printenv | grep "LLM\|OLLAMA\|GEMINI"
-```
-
----
-
-## 15. Ollama Commands (host-side, not in container)
-
-```bash
-# List models downloaded locally.
 curl -s http://localhost:11434/api/tags | python -m json.tool
+```
 
-# Or if the ollama CLI is on PATH:
+Or if the `ollama` CLI is on PATH:
+
+```bash
 ollama list
+```
 
-# Pull a model.
+### Pull a model
+
+```bash
 ollama pull moondream:1.8b
 ollama pull qwen2.5:7b
-
-# Remove a model to free disk space.
-ollama rm llama3.2:3b
-
-# Check if Ollama is running.
-curl -s http://localhost:11434/api/tags > /dev/null && echo "Ollama up" || echo "Ollama down"
-
-# Test Ollama reachability from INSIDE the container.
-docker compose exec backend curl -s http://host.docker.internal:11434/api/tags
-# If this fails but the host-side curl works, add to docker-compose.yml
-# under the backend service:
-#     extra_hosts:
-#       - "host.docker.internal:host-gateway"
+ollama pull llama3.2:3b
 ```
+
+### Remove a model
+
+```bash
+ollama rm llama3.2:3b
+```
+
+### Check if Ollama is running
+
+```bash
+curl -s http://localhost:11434/api/tags > /dev/null && echo "Ollama up" || echo "Ollama down"
+```
+
+### Test Ollama reachability from inside the container
+
+```bash
+docker compose exec backend curl -s http://host.docker.internal:11434/api/tags
+```
+
+If this fails but the host-side curl works, add to `docker-compose.yml`
+under the backend service:
+
+```yaml
+extra_hosts:
+  - "host.docker.internal:host-gateway"
+```
+
+Then `docker compose up -d backend`.
+
+### Start Ollama as a background service
+
+```bash
+ollama serve
+```
+
+Blocks the terminal. Run in a separate window and leave it open.
 
 ---
 
-## 16. Cleanup
+## 14. Cleanup
+
+### Remove Python caches
 
 ```bash
-# Remove dangling Docker images (unreferenced layers).
-docker image prune -f
-
-# Remove stopped containers.
-docker container prune -f
-
-# Show Docker disk usage.
-docker system df
-
-# Full cleanup — remove everything not in use.
-# ⚠️ This will remove the postgres volume if containers are stopped.
-docker system prune -a
-
-# Delete Python cache directories (safe, regenerated next run).
 find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null
 find . -type d -name .pytest_cache -exec rm -rf {} + 2>/dev/null
 ```
 
+### Remove dangling Docker images
+
+```bash
+docker image prune -f
+```
+
+### Remove stopped containers
+
+```bash
+docker container prune -f
+```
+
+### Show Docker disk usage
+
+```bash
+docker system df
+```
+
+### Full Docker cleanup (aggressive)
+
+```bash
+docker system prune -a
+```
+
+Removes everything not in use. **This will remove the Postgres volume if
+containers are stopped.** Do not run casually.
+
+### Delete a specific file from the upload volume
+
+```bash
+docker compose exec backend rm /app/data/uploads/<uuid>.pdf
+```
+
 ---
 
-## Quick Reference: Command → Purpose
+## 15. Quick Reference Table
 
 | Command | Purpose |
 |---|---|
-| `cd /c/Users/ADMIN/Desktop/rag-platform` | Move to repo root (bash-style path) |
+| `cd /c/Users/ADMIN/Desktop/rag-platform` | Move to repo root (Git Bash) |
 | `docker compose build backend` | Rebuild image after code changes |
-| `docker compose up -d` | Start containers, pick up .env changes |
+| `docker compose up -d` | Start containers, pick up `.env` changes |
 | `docker compose down` | Stop containers, keep data |
 | `docker compose down -v` | Stop containers, wipe all data |
 | `docker compose logs backend -f` | Live log tail |
 | `docker compose exec backend <cmd>` | Run something inside the container |
+| `docker compose exec backend pytest -v` | Run the full test suite |
 | `docker compose exec backend alembic current` | Check DB migration state |
+| `docker compose exec backend alembic upgrade head` | Apply migrations |
 | `docker compose exec postgres psql -U postgres -d modern_rag -c "<sql>"` | Query the DB |
-| `cd backend && pytest -v` | Run backend tests |
-| `python eval/run_eval.py` | Run full evaluation |
-| `streamlit run frontend/app.py` | Launch the chat UI |
-| `curl -X POST http://localhost:8000/query ... \| python -m json.tool` | Call the API, pretty-print JSON |
-| `time curl ...` | Measure query wall time |
+| `python eval/run_eval.py` | Run the evaluation harness |
+| `ls -t eval/results/*.md \| head -1` | Find latest eval report |
+| `curl ... http://localhost:8000/query` | Call the query API |
+| `git check-ignore .env` | Verify `.env` won't be committed |
+| `git add <files> && git commit -m "..." && git push` | Commit and push |
+| `ollama pull moondream:1.8b` | Download a vision model |
+| `docker stats --no-stream` | Show container resource usage |
 | `docker compose logs backend --tail=200 \| grep "pattern"` | Search logs |
-| `git check-ignore .env` | Verify .env is excluded from git |
-| `git checkout <tag> -- <file>` | Restore a single file from a tag |
-| `ollama list` | Show downloaded Ollama models |
-| `find . -type d -name __pycache__ -exec rm -rf {} +` | Delete Python caches |
 
 ---
 
-## Key Differences from PowerShell
-
-Three things that trip people up switching from PowerShell to Git Bash:
-
-**1. Paths use forward slashes and `/c/` prefix.**
-- PowerShell: `C:\Users\ADMIN\Desktop\rag-platform`
-- Git Bash: `/c/Users/ADMIN/Desktop/rag-platform`
-
-**2. Line continuations differ.**
-- PowerShell uses backtick `` ` ``
-- Git Bash uses backslash `\`
+## 16. Canonical Workflow (The Three Commands You'll Run Most)
 
 ```bash
-# Git Bash line continuation
-curl -X POST "http://localhost:8000/query" \
-  -H "Authorization: Bearer change-me-dev-token" \
-  -H "Content-Type: application/json" \
-  -d '{"question":"..."}'
-```
+# 1. Rebuild after any backend change
+docker compose build backend && docker compose up -d
 
-**3. JSON quoting is EASIER in Git Bash.** Single quotes preserve everything:
+# 2. Run tests
+docker compose exec backend pytest -v
 
-```bash
-# Git Bash — single quotes just work
-curl ... -d '{"question":"What is the leave policy?","pipeline":"improved"}'
-
-# If you need a shell variable inside, use double quotes with escapes
-curl ... -d "{\"question\":\"$QUESTION\",\"pipeline\":\"improved\"}"
-```
-
-In PowerShell, embedded JSON caused the whole "curl.exe mangles quotes" saga. Git Bash sidesteps that entirely.
-
----
-
-## The three commands you'll run most often
-
-```bash
-# 1. Start the stack and confirm it's healthy
-docker compose up -d && docker compose ps
-
-# 2. Ask a question, pretty-printed
+# 3. Ask a question and pretty-print
 curl -s -X POST "http://localhost:8000/query" \
   -H "Authorization: Bearer change-me-dev-token" \
   -H "Content-Type: application/json" \
   -d '{"question":"What is the leave policy?","pipeline":"improved"}' \
   | python -m json.tool
-
-# 3. Check what the pipeline did
-docker compose logs backend --tail=30 | grep -E "stage|retrieval_results|llm_usage"
 ```
+
+Everything else in this file is either one-time setup, a debugging aid,
+or a reference for when something goes wrong.
+
+---
+
+## 17. Common Error Messages and What They Mean
+
+| Error | Cause | Fix |
+|---|---|---|
+| `password authentication failed for user "rag"` | Wrong `.env` password, or connecting to native Postgres on 5432 | Check `.env`, use port 5433 |
+| `type "vector" does not exist` | Connected to native Postgres (no pgvector) | Use port 5433 (Docker's Postgres) |
+| `Cannot copy out of meta tensor; no data!` | Interrupted model download | `docker compose down -v && docker compose up --build` |
+| `DLL load failed while importing _argkmin` | Windows Application Control blocks a scikit-learn binary | `docker compose exec backend pytest -v` instead |
+| `OfflineModeIsEnabled` (Docling) | `HF_HUB_OFFLINE=1` blocks first download | Set to `0`, run one parse, back to `1` |
+| `no changes added to commit` | Ran `git commit` without `git add` first | `git add <files>` then commit |
+| `Updates were rejected` (git push) | GitHub has commits you don't | `git pull --rebase` then push |
+| `invalid input value for enum document_status: "failed"` | Lowercase in raw SQL | Use `'FAILED'` |
+| `st.session_state has no attribute "pipeline"` | Read from a background thread | Capture on main thread first (see `DESIGN.md` §11) |
+| `StreamlitInvalidColumnSpecError` | `st.columns([1, 0])` — zero is invalid | Use only positive widths |
+```
+
+---
+
+Save at `docs/COMMANDS.md`, then commit:
+
+```bash
+cd /c/Users/ADMIN/Desktop/rag-platform
+git add docs/COMMANDS.md
+git commit -m "Docs: add comprehensive commands reference"
+git push
+```
+
+Your `docs/` folder now has the complete set: **PRD** (what and why), **ARCHITECTURE** (system layout), **DESIGN** (why each choice), **RULES** (invariants), **MEMORY** (war stories), **TASKS** (current state), and **COMMANDS** (every command with its use case). Together with `README.md`, `HLD.md`, and `LLD.md` at the root, anyone — human or agent — can pick this project up cold.
