@@ -1,5 +1,5 @@
 """
-Modern RAG Platform — Streamlit frontend.
+Modern RAG Platform - Streamlit frontend.
 
 Design principles:
   1. The answer is the product. Reading experience comes first.
@@ -18,6 +18,13 @@ block, which renders raw HTML as literal text.
 CSS specificity note: Streamlit applies !important to its own button
 styling inside [data-testid="stHorizontalBlock"], so every custom button
 override here ALSO uses !important. Without it, the rule silently loses.
+
+ENCODING NOTE: this file is pure ASCII on purpose. Non-ASCII characters
+(em dashes, curly quotes, unicode icons) in Python source have repeatedly
+caused UnicodeDecodeError/SyntaxError on Windows when saved by an editor
+that defaults to cp1252 instead of UTF-8. HTML entities like &#10003; are
+used for symbols instead - they render identically in the browser with no
+encoding risk.
 """
 
 import html
@@ -62,7 +69,7 @@ WAIT        = "#4a6ea8"
 
 CSS = f"""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Neuton:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Neuton:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,500;9..144,600&display=swap');
 
 .stApp {{ background: {BG}; color: {INK}; font-family: 'Neuton', 'Inter', -apple-system, sans-serif; }}
 .stApp p, .stApp li, .stApp label, .stApp span, .stApp div, .stApp h1, .stApp h2, .stApp h3, .stApp h4, .stApp h5, .stApp h6 {{ color: inherit; }}
@@ -96,8 +103,7 @@ button[title^="conversation:"] {{
 }}
 .side-brand-sub {{
     font-size: 11px; color: {INK_FAINT}; margin-top: 5px;
-    display: flex; align-items: center; gap: 6px; text-transform: uppercase;
-    letter-spacing: 0.6px; font-weight: 500;
+    display: flex; align-items: center; gap: 6px; font-weight: 500;
 }}
 .side-brand-dot {{
     width: 6px; height: 6px; border-radius: 50%;
@@ -124,13 +130,13 @@ button[title^="conversation:"] {{
 }}
 
 .side-label {{
-    font-size: 10.5px; color: {INK_FAINT}; font-weight: 700;
-    text-transform: uppercase; letter-spacing: 1.1px;
-    margin: 1.4rem 0 0.7rem 0.3rem;
+    font-size: 11px; color: {INK_FAINT}; font-weight: 600;
+    margin: 1.4rem 0 0.5rem 0.3rem;
 }}
 
 [data-testid="stSidebar"] .stRadio {{
     margin-top: 0.25rem;
+    margin-bottom: 1.2rem;
 }}
 [data-testid="stSidebar"] .stRadio > div {{
     gap: 0.35rem !important;
@@ -215,8 +221,8 @@ button[title^="conversation:"] {{
 .hero-sub {{ font-size: 15px; color: {INK_MUTED}; line-height: 1.6; max-width: 480px; }}
 
 .examples-label {{
-    font-size: 11px; color: {INK_FAINT}; text-transform: uppercase;
-    letter-spacing: 0.9px; font-weight: 600; margin: 2.5rem 0 0.9rem 0;
+    font-size: 12px; color: {INK_FAINT}; font-weight: 600;
+    margin: 2.5rem 0 0.9rem 0;
 }}
 
 /* Example question chips (rendered as buttons via st.columns) */
@@ -275,12 +281,12 @@ button[title^="example:"] > div {{
 .asst-body [data-testid="stMarkdownContainer"] p {{
     color: {INK}; font-size: 15.5px; line-height: 1.7; margin-bottom: 0.9em;
 }}
-.asst-body [data-testid="stMarkdownContainer"] strong {{ color: #fff; font-weight: 600; }}
+.asst-body [data-testid="stMarkdownContainer"] strong {{ color: {INK}; font-weight: 700; }}
 .asst-body [data-testid="stMarkdownContainer"] code {{
     background: {BG_RAISED}; padding: 2px 7px; border-radius: 4px;
     font-size: 13px; color: {ACCENT_HI}; border: 1px solid {BORDER};
 }}
-.asst-body [data-testid="stMarkdownContainer"] ul, 
+.asst-body [data-testid="stMarkdownContainer"] ul,
 .asst-body [data-testid="stMarkdownContainer"] ol {{
     margin-top: 0.4em; margin-bottom: 0.9em;
 }}
@@ -297,8 +303,7 @@ button[title^="example:"] > div {{
     display: flex; align-items: center; gap: 10px;
     padding: 0.7rem 0 0.6rem 0;
     border-bottom: 1px solid {BORDER};
-    font-size: 11.5px; color: {INK_FAINT}; font-weight: 600;
-    text-transform: uppercase; letter-spacing: 0.9px;
+    font-size: 12px; color: {INK_FAINT}; font-weight: 600;
 }}
 .source-item {{
     display: flex; gap: 14px;
@@ -396,7 +401,6 @@ button[kind="primary"]:hover {{
 }}
 .progress-header {{
     font-size: 12px; color: {INK_FAINT}; font-weight: 500;
-    text-transform: uppercase; letter-spacing: 0.9px;
     margin-bottom: 1rem;
     display: flex; justify-content: space-between; align-items: center;
 }}
@@ -458,8 +462,7 @@ button[kind="primary"]:hover {{
 /* Status pills */
 .pill {{
     display: inline-flex; align-items: center; gap: 6px;
-    font-size: 11px; font-weight: 600; text-transform: uppercase;
-    letter-spacing: 0.5px;
+    font-size: 11.5px; font-weight: 600;
     padding: 4px 10px; border-radius: 999px;
     flex-shrink: 0;
 }}
@@ -476,8 +479,6 @@ button[kind="primary"]:hover {{
 
 /* ---------- CHAT INPUT (wide, ChatGPT-style) ---------- */
 
-/* Kill Streamlit's default flex shrink on the bottom bar so the input
-   inherits full container width. */
 [data-testid="stBottom"] > div {{
     background: transparent !important;
     padding: 0 !important;
@@ -581,8 +582,6 @@ button[kind="primary"]:hover {{
     transform: scale(1.05) !important;
 }}
 
-/* Streamlit nests an inner wrapper inside stChatInput — make sure it
-   doesn't add its own width constraint. */
 [data-testid="stChatInput"] > div {{
     background: transparent !important;
     width: 100% !important;
@@ -596,31 +595,46 @@ button[kind="primary"]:hover {{
     min-width: 0 !important;
 }}
 
+.chat-disclaimer {{
+    text-align: center; font-size: 11.5px; color: {INK_FAINT};
+    margin-top: 0.6rem; padding-bottom: 4px;
+}}
+
 /* ---------- UPLOAD ZONE ---------- */
 [data-testid="stFileUploader"] {{
-    background: {BG_RAISED} !important;
-    border: 1px dashed {BORDER_HI} !important;
+    background: #f5f4f2 !important;
+    border: 1px solid {BORDER} !important;
     border-radius: 12px !important;
-    padding: 1rem !important;
+    padding: 0.75rem 1rem !important;
     transition: border-color 0.15s ease !important;
-    box-shadow: inset 0 0 0 1px rgba(255,255,255,0.35) !important;
+    box-shadow: none !important;
 }}
-[data-testid="stFileUploader"]:hover {{ border-color: {ACCENT}66 !important; }}
+[data-testid="stFileUploader"]:hover {{ border-color: {BORDER_HI} !important; }}
 [data-testid="stFileUploader"] section {{ background: transparent !important; border: none !important; }}
+[data-testid="stFileUploader"] > div {{
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    gap: 0.9rem !important;
+}}
+[data-testid="stFileUploader"] * {{
+    color: {INK} !important;
+}}
 [data-testid="stFileUploader"] [data-testid="stMarkdownContainer"] p {{
-    color: {INK} !important; font-size: 14px !important;
+    color: {INK} !important; font-size: 14px !important; margin: 0 !important;
 }}
 [data-testid="stFileUploader"] button,
 [data-testid="stFileUploader"] [data-testid="stBaseButton-secondary"],
 [data-testid="stFileUploader"] [data-testid="baseButton-secondary"] {{
     background: #1b1f23 !important;
     color: #ffffff !important;
-    border: 1px solid #2f363d !important;
-    border-radius: 10px !important;
+    border: 1px solid #1b1f23 !important;
+    border-radius: 8px !important;
     font-weight: 600 !important;
     font-size: 14px !important;
-    padding: 0.7rem 1.1rem !important;
+    padding: 0.55rem 1rem !important;
     box-shadow: none !important;
+    margin-left: auto !important;
 }}
 [data-testid="stFileUploader"] button:hover,
 [data-testid="stFileUploader"] [data-testid="stBaseButton-secondary"]:hover,
@@ -682,7 +696,6 @@ hr {{ border-color: {BORDER} !important; margin: 1.5rem 0 !important; }}
 ::-webkit-scrollbar-thumb {{ background: {BORDER_HI}; border-radius: 5px; }}
 ::-webkit-scrollbar-thumb:hover {{ background: {INK_FAINT}; }}
 
-/* Spinner (fallback) */
 [data-testid="stSpinner"] > div {{ border-top-color: {ACCENT} !important; }}
 </style>
 """
@@ -783,11 +796,19 @@ def delete_conversation(cid: str):
 
 
 # ============================================================================
+# NAV
+# ============================================================================
+
+NAV_OPTIONS = ["Chat", "Upload", "Documents", "Settings"]
+
+
+# ============================================================================
 # SIDEBAR
 # ============================================================================
 
 def render_sidebar():
     with st.sidebar:
+        # Brand
         st.markdown(
             '<div class="side-brand">'
             '<div class="side-brand-name">Knowledge Base</div>'
@@ -799,12 +820,30 @@ def render_sidebar():
             unsafe_allow_html=True,
         )
 
-        if st.button("＋  New conversation", use_container_width=True, key="new_conv_btn"):
+        # Navigation (top of sidebar, under brand)
+        st.markdown(
+            '<div class="side-label" style="margin-top:0">Navigate</div>',
+            unsafe_allow_html=True,
+        )
+        current_idx = NAV_OPTIONS.index(st.session_state.page)
+        choice = st.radio(
+            "nav",
+            NAV_OPTIONS,
+            index=current_idx,
+            label_visibility="collapsed",
+            key="side_nav",
+        )
+        if choice != st.session_state.page:
+            st.session_state.page = choice
+            st.rerun()
+
+        # New conversation
+        if st.button("+  New conversation", use_container_width=True, key="new_conv_btn"):
             new_conversation()
             st.session_state.page = "Chat"
             st.rerun()
 
-        # Group conversations by date
+        # Conversation history grouped by date
         convs = {cid: c for cid, c in st.session_state.conversations.items() if c["messages"]}
         if convs:
             sorted_convs = sorted(convs.items(), key=lambda kv: kv[1]["ts"], reverse=True)
@@ -827,12 +866,22 @@ def render_sidebar():
                 for cid, c in items:
                     is_active = cid == st.session_state.current_conv_id
                     if is_active:
-                        # Highlight active conversation via a scoped CSS rule
+                        # Highlight active conversation. Selector deliberately
+                        # over-specific so it beats the base conversation rule
+                        # (which also uses !important). Hardcoded hex values
+                        # instead of {BG}/{INK} tokens because f-string
+                        # interpolation inside a dynamically injected <style>
+                        # block can behave unexpectedly across Streamlit
+                        # reruns; explicit values remove all doubt.
                         st.markdown(
                             f'<style>'
-                            f'button[title="conversation:{cid}"]{{'
-                            f'background:{BG}!important;color:{INK}!important;'
-                            f'border-color:{BORDER_HI}!important;'
+                            f'[data-testid="stSidebar"] button[title="conversation:{cid}"],' 
+                            f'[data-testid="stSidebar"] section button[title="conversation:{cid}"],' 
+                            f'[data-testid="stSidebar"] [data-testid="stSidebarContent"] button[title="conversation:{cid}"] {{'
+                            f'background: #f0ebe0 !important;'
+                            f'color: #17181a !important;'
+                            f'border-color: #dfe3dc !important;'
+                            f'box-shadow: inset 3px 0 0 #b7782d !important;'
                             f'}}'
                             f'</style>',
                             unsafe_allow_html=True,
@@ -849,20 +898,8 @@ def render_sidebar():
 
 
 # ============================================================================
-# NAV + HEADER
+# PAGE HEADER
 # ============================================================================
-
-NAV_OPTIONS = ["Chat", "Upload", "Documents", "Settings"]
-
-
-def render_sidebar_nav():
-    """Simple vertical nav in the sidebar, above the conversation list."""
-    with st.sidebar:
-        current = st.session_state.page
-        # We're inside a `with st.sidebar` already from render_sidebar; but
-        # this function is called from main() directly. Caller context matters.
-        pass  # handled inline in render_sidebar for simplicity below
-
 
 def render_page_header(title: str, right_text: str | None = None):
     if right_text:
@@ -889,15 +926,16 @@ STAGES = [
 
 
 def _render_progress(stages, current_idx: int, elapsed: float):
-    """Render the multi-stage progress card. Uses single-line HTML."""
+    """Render the multi-stage progress card. Uses HTML entities for symbols
+    so the source file stays ASCII-only."""
     rows = ""
     for i, (label, _) in enumerate(stages):
         if i < current_idx:
-            state, icon = "done", "✓"
+            state, icon = "done", "&#10003;"      # check mark
         elif i == current_idx:
-            state, icon = "active", "●"
+            state, icon = "active", "&#9679;"     # filled circle
         else:
-            state, icon = "pending", "○"
+            state, icon = "pending", "&#9675;"    # hollow circle
         rows += (
             f'<div class="progress-stage progress-{state}">'
             f'<span class="progress-icon">{icon}</span>'
@@ -924,8 +962,6 @@ def run_query_with_progress(prompt: str) -> tuple[dict | None, str | None]:
     thread and passed in as arguments. The thread itself must not touch
     st.session_state.
     """
-    # Capture everything the thread needs from session state NOW, on the
-    # main thread, where session_state is valid.
     pipeline = st.session_state.pipeline
     session_id = st.session_state.session_id
     token = st.session_state.get("api_token", DEFAULT_TOKEN)
@@ -964,12 +1000,10 @@ def run_query_with_progress(prompt: str) -> tuple[dict | None, str | None]:
     placeholder = st.empty()
     start = time.time()
     last_idx = -1
-    slow_warned = False
 
     while t.is_alive():
         elapsed = time.time() - start
 
-        # Figure out which stage we're likely in
         cum = 0
         idx = 0
         for i, (_, dur) in enumerate(STAGES):
@@ -985,13 +1019,9 @@ def run_query_with_progress(prompt: str) -> tuple[dict | None, str | None]:
             with placeholder.container():
                 _render_progress(STAGES, idx, elapsed)
         else:
-            # Refresh the elapsed timer every ~1s
             if int(elapsed) != int(elapsed - 0.5):
                 with placeholder.container():
                     _render_progress(STAGES, idx, elapsed)
-
-        if elapsed > 60 and not slow_warned:
-            slow_warned = True
 
         time.sleep(0.4)
 
@@ -1070,7 +1100,7 @@ def render_assistant_actions(msg_idx: int, msg: dict):
                 st.rerun()
         return
 
-    c1, c2, c3, _ = st.columns([1, 1, 1, 10], gap="small")
+    c1, c2, _ = st.columns([1, 1, 10], gap="small")
     with c1:
         if st.button("Useful", key=f"up_{msg_idx}"):
             _submit_feedback(msg, True, "")
@@ -1080,10 +1110,6 @@ def render_assistant_actions(msg_idx: int, msg: dict):
         if st.button("Not useful", key=f"down_{msg_idx}"):
             st.session_state.feedback_state[msg_idx] = "pending_down"
             st.rerun()
-    with c3:
-        if st.button("Copy", key=f"copy_{msg_idx}"):
-            st.session_state[f"copied_{msg_idx}"] = True
-            st.toast("Copied — select the text above to paste")
 
 
 def _submit_feedback(msg: dict, is_useful: bool, comment: str):
@@ -1110,7 +1136,7 @@ def render_assistant_message(msg: dict, idx: int):
 
     if msg.get("abstained"):
         st.markdown(
-            '<div class="note note-abstain">⚠ &nbsp;No relevant evidence found in your documents.</div>',
+            '<div class="note note-abstain">No relevant evidence found in your documents.</div>',
             unsafe_allow_html=True,
         )
 
@@ -1153,7 +1179,6 @@ def _render_empty_state():
 
     st.markdown('<div class="examples-label">Some questions to start with</div>', unsafe_allow_html=True)
 
-    # Two-column grid of example questions
     for i in range(0, len(EXAMPLE_QUESTIONS), 2):
         cols = st.columns(2, gap="small")
         for j, col in enumerate(cols):
@@ -1186,17 +1211,15 @@ def section_chat():
     if not st.session_state.messages and not st.session_state.pending_query:
         _render_empty_state()
 
-    # Render all committed messages
     for i, msg in enumerate(st.session_state.messages):
         if msg["role"] == "user":
             render_user_message(msg["content"])
         else:
             render_assistant_message(msg, i)
 
-    # Handle pending query with progress
     if st.session_state.pending_query:
         prompt = st.session_state.pending_query
-        st.session_state.pending_query = None  # clear so we don't re-fire on rerun
+        st.session_state.pending_query = None
 
         resp, error = run_query_with_progress(prompt)
 
@@ -1222,19 +1245,15 @@ def section_chat():
         _save_current_conversation()
         st.rerun()
 
-    # Chat input at the bottom
-    prompt = st.chat_input("Ask a question…")
+    prompt = st.chat_input("Ask a question...")
     if prompt:
         _send_query(prompt)
         st.rerun()
-        st.markdown('<div style="height: 1rem;"></div>', unsafe_allow_html=True)
-        st.markdown(
-            '<div style="text-align:center;font-size:11.5px;color:#6a6357;margin-top:-6px;padding-bottom:8px;">'
-            'The assistant answers only from your uploaded documents.'
-            '</div>',
-            unsafe_allow_html=True,
-        )
-            
+
+    st.markdown(
+        '<div class="chat-disclaimer">The assistant answers only from your uploaded documents.</div>',
+        unsafe_allow_html=True,
+    )
 
 
 # ============================================================================
@@ -1243,10 +1262,11 @@ def section_chat():
 
 def section_upload():
     render_page_header("Upload a document")
-    st.caption("PDF, DOCX, TXT, or Markdown · up to 25 MB per file")
+    st.caption("Limit 200MB per file · PDF, DOCX, TXT, MD")
 
     uploaded = st.file_uploader(
-        "Choose a file", type=["pdf", "docx", "txt", "md"],
+        "Drag and drop file here",
+        type=["pdf", "docx", "txt", "md"],
         label_visibility="collapsed",
     )
 
@@ -1264,7 +1284,7 @@ def section_upload():
             metadata["category"] = category
 
         if st.button("Upload and process", type="primary"):
-            with st.spinner(f"Uploading {uploaded.name}…"):
+            with st.spinner(f"Uploading {uploaded.name}..."):
                 try:
                     files = {"file": (uploaded.name, uploaded.getvalue(), uploaded.type)}
                     data = {"metadata": _json.dumps(metadata)}
@@ -1275,12 +1295,12 @@ def section_upload():
 
             if resp:
                 doc_id = resp["id"]
-                st.info(f"Uploaded. Processing **{uploaded.name}**…")
-                progress = st.progress(0.0, text="Parsing and indexing…")
+                st.info(f"Uploaded. Processing **{uploaded.name}**...")
+                progress = st.progress(0.0, text="Parsing and indexing...")
                 done = False
                 for i in range(90):
                     time.sleep(2)
-                    progress.progress(min((i + 1) / 90, 1.0), text=f"Processing… ({i*2}s)")
+                    progress.progress(min((i + 1) / 90, 1.0), text=f"Processing... ({i*2}s)")
                     try:
                         doc = api("GET", f"/documents/{doc_id}")
                     except RuntimeError as e:
@@ -1382,8 +1402,8 @@ def section_settings():
         options=["improved", "baseline"],
         index=0 if st.session_state.pipeline == "improved" else 1,
         captions=[
-            "Hybrid retrieval + reranking + multi-query + compression — slower, higher quality.",
-            "Vector search only — fast baseline for comparison.",
+            "Hybrid retrieval + reranking + multi-query + compression - slower, higher quality.",
+            "Vector search only - fast baseline for comparison.",
         ],
         label_visibility="collapsed",
     )
@@ -1404,7 +1424,7 @@ def section_settings():
     st.markdown('<div class="side-label" style="margin-left:0; margin-top:2rem">Backend</div>', unsafe_allow_html=True)
     st.caption(f"`{API_BASE}`")
     if health_ok():
-        st.success("Reachable — database ok")
+        st.success("Reachable - database ok")
     else:
         st.error("Unreachable or database down")
 
@@ -1416,7 +1436,7 @@ def section_settings():
 def main():
     st.set_page_config(
         page_title="Knowledge Base",
-        page_icon="◆",
+        page_icon=":large_blue_diamond:",
         layout="wide",
         initial_sidebar_state="expanded",
     )
@@ -1424,21 +1444,6 @@ def main():
     init_session()
 
     render_sidebar()
-
-    # Sidebar navigation (kept simple and vertical)
-    with st.sidebar:
-        st.markdown('<div class="side-label" style="margin-top:1.5rem">Navigate</div>', unsafe_allow_html=True)
-        current_idx = NAV_OPTIONS.index(st.session_state.page)
-        choice = st.radio(
-            "nav",
-            NAV_OPTIONS,
-            index=current_idx,
-            label_visibility="collapsed",
-            key="side_nav",
-        )
-        if choice != st.session_state.page:
-            st.session_state.page = choice
-            st.rerun()
 
     page = st.session_state.page
     if page == "Chat":

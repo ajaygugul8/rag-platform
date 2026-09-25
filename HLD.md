@@ -217,7 +217,7 @@ component can be replaced by changing one file and one config value:
 | 2 | Baseline RAG: parsing, cleaning, chunking, embeddings, vector retrieval, generation, naive orchestrator | ✅ Built, tested |
 | 3 | Retrieval upgrades: metadata filtering, hybrid (vector+keyword) search, reranking, pipeline comparison endpoint | ✅ Built, fully verified end-to-end |
 | 4 | Advanced RAG: query rewriting, multi-query expansion, contextual compression, conversation-aware retrieval | ✅ Built, verified |
-| 5 | Evaluation: golden dataset + harness comparing baseline vs. improved | ✅ Done. `improved` scored hit_rate 0.83 vs. baseline 0.50, MRR 0.83 vs. 0.50, keyword_coverage 0.75 vs. 0.50, abstention_accuracy 0.86 vs. 0.57 — at a latency cost of ~1050ms vs. ~65ms average. Full report in `eval/results/`. |
+| 5 | Evaluation: golden dataset + harness comparing baseline vs. improved | ✅ Done. 20-question golden set. Latest run: `improved` hit_rate 0.94 vs. baseline 0.83, MRR 0.94 vs. 0.81, keyword_coverage 0.89 vs. 0.81, abstention_accuracy 0.95 vs. 0.85 — at a latency cost of ~1698ms vs. ~71ms average. Full report in `eval/results/`. |
 | 6 | Production hardening: tracing, caching, Alembic, feedback, LLM providers | ⚠️ Partial — done: Alembic (0001, 0002), feedback endpoint, Gemini multi-key + Ollama fallback, per-stage tracing, token-usage logging, retrieval-result logging. Deferred: Redis cache, task queue, per-user auth. |
 | 7 | Demo packaging + multimodal: Docling, tables, images, frontend, docs | ✅ Done — text + tables + images all chunked and retrievable through the same pipeline. Streamlit frontend with citations, feedback, session history. |
 
