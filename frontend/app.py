@@ -40,7 +40,7 @@ import threading
 import time
 import uuid
 from collections import defaultdict
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 from pathlib import Path
 
 import requests
@@ -164,12 +164,25 @@ def init_session():
 
 
 def _parse_ts(value) -> datetime:
+    """Parse a timestamp from the backend into a timezone-AWARE datetime.
+
+    Every ts in this app must be aware, because the sidebar sorts a mix
+    of DB-sourced timestamps (which come with a tz offset) and locally-
+    created ones (new_conversation, _send_query). Mixing aware and naive
+    raises `TypeError: can't compare offset-naive and offset-aware
+    datetimes` on the first sort. Normalize everything to UTC here.
+    """
     if not value:
-        return datetime.now()
+        return datetime.now(timezone.utc)
     try:
-        return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
-    except ValueError:
-        return datetime.now()
+        dt = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            # Stale or legacy local records can still be naive. Normalize
+            # them defensively to UTC before any sorting or display code uses them.
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc)
+    except (ValueError, TypeError):
+        return datetime.now(timezone.utc)
 
 
 def _save_current_conversation():
@@ -192,7 +205,7 @@ def new_conversation():
     st.session_state.pending_query = None
     st.session_state.conversations[new_sid] = {
         "title": "New conversation",
-        "ts": datetime.now(),
+        "ts": datetime.now(timezone.utc),
         "messages": [],
         "session_id": new_sid,
     }
@@ -274,6 +287,8 @@ def render_sidebar():
             if c["messages"] or cid != st.session_state.current_conv_id or c["title"] != "New conversation"
         }
         if convs:
+            for conv in convs.values():
+                conv["ts"] = _parse_ts(conv.get("ts"))
             sorted_convs = sorted(convs.items(), key=lambda kv: kv[1]["ts"], reverse=True)
             groups = defaultdict(list)
             today = date.today()
@@ -577,7 +592,7 @@ def _send_query(prompt: str):
     conv = st.session_state.conversations[cid]
     if conv["title"] == "New conversation":
         conv["title"] = prompt[:60]
-        conv["ts"] = datetime.now()
+        conv["ts"] = datetime.now(timezone.utc)
     st.session_state.messages.append({"role": "user", "content": prompt})
     _save_current_conversation()
     st.session_state.pending_query = prompt
