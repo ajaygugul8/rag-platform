@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.api.schemas import CitationResponse, QueryRequest, QueryResponse
 from app.core.cache import make_key, query_cache
 from app.core.security import require_auth
+from app.db.models import ChatMessage
 from app.db.session import get_db
 from app.observability.tracing import trace_stage
 from app.orchestrator import improved_rag, naive_rag
@@ -73,6 +74,40 @@ def query(request: QueryRequest, db: Session = Depends(get_db)) -> QueryResponse
         resolved_query=resolved_query,
         citations=citations,
     )
+
+    # Persist both turns to chat_messages so the frontend sidebar can
+    # restore this conversation after a page refresh. Only for session-
+    # scoped queries — a None session_id means the caller opted out of
+    # conversation features entirely (same convention as the cache key).
+    #
+    # Persistence failures are logged but do NOT fail the request: the
+    # user already has their answer, and losing the sidebar entry is a
+    # far smaller loss than losing the answer.
+    if request.session_id:
+        try:
+            db.add(ChatMessage(
+                session_id=request.session_id,
+                role="user",
+                content=request.question,
+            ))
+            db.add(ChatMessage(
+                session_id=request.session_id,
+                role="assistant",
+                content=response.answer,
+                message_metadata={
+                    "citations": [c.model_dump(mode="json") for c in response.citations],
+                    "abstained": response.abstained,
+                    "resolved_query": response.resolved_query,
+                    "original_question": request.question,
+                },
+            ))
+            db.commit()
+        except Exception as e:
+            db.rollback()
+            logger.warning(
+                "chat_persistence_failed",
+                extra={"error": str(e), "session_id": request.session_id},
+            )
 
     if cache_key is not None:
         query_cache.set(cache_key, response.model_dump())

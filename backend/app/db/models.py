@@ -158,3 +158,28 @@ class ConversationTurn(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     __table_args__ = (Index("ix_conversation_turns_session_id", "session_id", "created_at"),)
+
+class ChatMessage(Base):
+    """Frontend conversation history — one row per user/assistant turn.
+
+    Kept separate from `conversation_turns` on purpose:
+      - conversation_turns feeds query rewriting; stays plain (role, content)
+      - chat_messages stores the full response payload (citations, abstained,
+        resolved_query) so the sidebar can restore a conversation exactly as
+        it looked when the user last saw it
+
+    session_id is client-generated and reused as the conversation key in the
+    frontend — one identifier, not two.
+    """
+    __tablename__ = "chat_messages"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    session_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    role: Mapped[str] = mapped_column(String(16), nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    message_metadata: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), index=True
+    )
