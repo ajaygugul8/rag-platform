@@ -178,10 +178,18 @@ def answer_query(
     # so a query phrased in text can score below the 0.6 threshold
     # against an image chunk it should match. When the query mentions
     # an image AND an image candidate exists, relax the gate.
-    _IMAGE_PREFIXES_GATE = ("Alternate text for this image", "This image depicts")
-    has_image_candidate = any(
-        (c.content or "").startswith(_IMAGE_PREFIXES_GATE) for c in candidates
+    _IMAGE_MARKERS_GATE = (
+        "Alternate text for this image",
+        "This image depicts",
+        "This image appears in the section titled",
     )
+
+    def _is_image_chunk(content: str) -> bool:
+        if not content:
+            return False
+        return any(marker in content for marker in _IMAGE_MARKERS_GATE)
+
+    has_image_candidate = any(_is_image_chunk(c.content) for c in candidates)
     relax_gate = bool(_IMAGE_QUERY_RE.search(resolved_query or "")) and has_image_candidate
     effective_threshold = 0.35 if relax_gate else RAW_VECTOR_MIN_RELEVANCE_SCORE
 
@@ -212,13 +220,20 @@ def answer_query(
     # descriptions against prose *about* images — this closes that gap
     # without loosening the pipeline for text queries.
     if _IMAGE_QUERY_RE.search(resolved_query or ""):
-        _IMAGE_PREFIXES = ("Alternate text for this image", "This image depicts")
-        already = any((c.content or "").startswith(_IMAGE_PREFIXES) for c in final_chunks)
+        _IMAGE_MARKERS = (
+            "Alternate text for this image",
+            "This image depicts",
+            "This image appears in the section titled",
+        )
+
+        def _is_image_chunk(content: str) -> bool:
+            if not content:
+                return False
+            return any(marker in content for marker in _IMAGE_MARKERS)
+
+        already = any(_is_image_chunk(c.content) for c in final_chunks)
         if not already:
-            image_candidates = [
-                c for c in candidates
-                if (c.content or "").startswith(_IMAGE_PREFIXES)
-            ]
+            image_candidates = [c for c in candidates if _is_image_chunk(c.content)]
             if image_candidates:
                 best_image = max(image_candidates, key=lambda c: c.score)
                 if final_chunks:

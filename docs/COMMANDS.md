@@ -25,6 +25,7 @@ directory.
 
 ```powershell
 & "C:\Program Files\Git\git-bash.exe" --cd="C:\Users\ADMIN\Desktop\rag-platform"
+& "C:\Program Files\Git\bin\bash.exe" --login -i
 ```
 
 Opens a new Git Bash window already in the project directory. Use this

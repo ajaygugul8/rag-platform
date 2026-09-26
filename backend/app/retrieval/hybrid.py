@@ -33,7 +33,17 @@ _IMAGE_KEYWORDS = re.compile(
     re.IGNORECASE,
 )
 
-_IMAGE_CHUNK_PREFIXES = ("Alternate text for this image", "This image depicts")
+_IMAGE_CHUNK_MARKERS = (
+    "Alternate text for this image",
+    "This image depicts",
+    "This image appears in the section titled",
+)
+
+
+def _is_image_chunk(content: str) -> bool:
+    if not content:
+        return False
+    return any(marker in content for marker in _IMAGE_CHUNK_MARKERS)
 
 
 def _min_max_normalize(scores: dict[UUID, float]) -> dict[UUID, float]:
@@ -87,7 +97,7 @@ def hybrid_search(
     # block is skipped when no image keyword appears.
     if _IMAGE_KEYWORDS.search(query_text or ""):
         for i, c in enumerate(blended):
-            if (c.content or "").startswith(_IMAGE_CHUNK_PREFIXES):
+            if _is_image_chunk(c.content):
                 blended[i] = replace(c, score=c.score * 2.5)
 
     blended.sort(key=lambda c: c.score, reverse=True)
