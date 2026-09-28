@@ -568,7 +568,7 @@ def _render_empty_state():
     hero = (
         '<div class="hero">'
         '<div class="hero-title">What do you want to know?</div>'
-        '<div class="hero-sub">Ask about your PDFs, Word docs, or text files. Every answer shows where it came from.</div>'
+        '<div class="hero-sub">Ask about document files. Every answer shows where it came from.</div>'
         '</div>'
     )
     st.markdown(hero, unsafe_allow_html=True)
@@ -600,7 +600,7 @@ def _send_query(prompt: str):
 
 def section_chat():
     sid = st.session_state.session_id
-    render_page_header("Ask the knowledge base", right_text=f"session {sid[:8]}")
+    render_page_header("Ask me", right_text=f"session {sid[:8]}")
 
     if not st.session_state.messages and not st.session_state.pending_query:
         _render_empty_state()
